@@ -123,17 +123,17 @@ async fn check_occurrence(
 ) -> Result<bool> {
     let query = format!(
         // I need smt like 
-    //         ASK WHERE {
-    //   wd:Q213511 p:P703 ?statement.
-    //   ?statement ps:P703 wd:Q2355919;
-    //     prov:wasDerivedFrom ?ref.
-    //   ?ref pr:P248 wd:Q105275116.
-    // }
+        // ASK WHERE {
+        //     wd:Q213511 p:P703 ?statement.
+        //     ?statement ps:P703 wd:Q2355919;
+        //       wikibase:rank wikibase:NormalRank;
+        //       (prov:wasDerivedFrom/pr:P248) wd:Q105275116.
+        //   }
         "ASK WHERE {{
             wd:{chemical_qid} p:P703 ?statement.
             ?statement ps:P703 wd:{taxon_qid};
-                prov:wasDerivedFrom ?ref.
-            ?ref pr:P248 wd:{reference_qid}.
+                wikibase:rank wikibase:NormalRank;
+                (prov:wasDerivedFrom/pr:P248) wd:{reference_qid}.
         }}"
     );
     let response = execute_sparql_query(&query, client).await?;
