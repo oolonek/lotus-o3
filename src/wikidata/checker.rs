@@ -137,7 +137,7 @@ async fn check_occurrence(
         }}"
     );
     let response = execute_sparql_query(&query, client).await?;
-    response.boolean.ok_or_else(|| CrateError::SparqlResponseFormatError("Missing or invalid \'boolean\' field in ASK response".to_string()))
+    response.boolean.ok_or_else(|| CrateError::SparqlResponseFormatError("Missing or invalid \'boolean\' field in ASK WHERE response".to_string()))
 }
 
 

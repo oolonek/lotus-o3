@@ -47,13 +47,19 @@ pub fn generate_quickstatements(
                 commands.push(format!("LAST\tP274\t\"{}\"", formula));
             }
             
+            // Add occurrence statement with temporary ID
+            commands.push(format!(
+                "LAST\tP703\t{}\tS248\t{}",
+                info.taxon_qid.as_ref().unwrap(), info.reference_qid.as_ref().unwrap()
+            ));
+
             // TODO: Add P2067 (mass) calculation and statement with qualifiers P887=Q113907573
             // Requires a cheminformatics library capable of calculating mass from SMILES/formula.
             // Skipping for simplicity for now.
         }
 
         // 2. Add Occurrence Statement if it doesn't exist and all QIDs are present
-        if !info.occurrence_exists {
+        if !info.occurrence_exists && !info.chemical_qid.is_none() {
             match (&current_chemical_qid, &info.taxon_qid, &info.reference_qid) {
                 (Some(chem_qid), Some(tax_qid), Some(ref_qid)) => {
                     // Add P703 (found in taxon) statement with S248 (stated in) reference

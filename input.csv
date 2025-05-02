@@ -3,3 +3,4 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Coffea arabica,10.1016/0031-9422(90)85266-
 Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Coffea arabica,10.1007/BF00269231
 Theobromine,CN1C=NC2=C1C(=O)NC(=O)N2C,Theobroma cacao,10.1016/S0031-9422(00)83024-1
 NonExistentCompound,CCCCCCCCCCC,Fake Taxon,10.9999/fake.doi
+Trigocherriolide C,C[C@@H]1[C@@H]2OC(O)(O[C@@]11C3C[C@]2(O)[C@](C)(O)C[C@@H](C)CCCCCC[C@H](C)C(=O)O[C@H]2C(C=C1[C@]2(O)[C@H](O)[C@@]1(CO)O[C@@H]31)=C(Cl)Cl)c1ccccc1,Trigonostemon cherrieri,10.1016/J.PHYTOCHEM.2012.07.023
