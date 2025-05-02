@@ -59,7 +59,7 @@ pub fn generate_quickstatements(
         }
 
         // 2. Add Occurrence Statement if it doesn't exist and all QIDs are present
-        if !info.occurrence_exists && !info.chemical_qid.is_none() {
+        if !info.occurrence_exists && info.chemical_qid.is_none() {
             match (&current_chemical_qid, &info.taxon_qid, &info.reference_qid) {
                 (Some(chem_qid), Some(tax_qid), Some(ref_qid)) => {
                     // Add P703 (found in taxon) statement with S248 (stated in) reference
@@ -127,6 +127,7 @@ mod tests {
             EnrichedData {
                 chemical_entity_name: "TestChem".to_string(),
                 input_smiles: "C".to_string(),
+                sanitized_smiles: "C".to_string(),
                 taxon_name: "TestTaxon".to_string(),
                 reference_doi: "10.1/test".to_string(),
                 canonical_smiles: Some("C".to_string()),

@@ -4,12 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use log::warn;
+use log::info;
 
 // Holds the input data plus data fetched from the Chemoinformatics API.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EnrichedData {
     pub chemical_entity_name: String,
     pub input_smiles: String,
+    pub sanitized_smiles: String,
     pub taxon_name: String,
     pub reference_doi: String,
     pub canonical_smiles: Option<String>,
@@ -19,6 +21,34 @@ pub struct EnrichedData {
     pub molecular_formula: Option<String>,
     // Store other descriptors for potential future use or debugging
     pub other_descriptors: Option<HashMap<String, Value>>,
+}
+
+// --- Structs for /chem/errors?fix=true response --- 
+
+#[derive(Deserialize, Debug)]
+struct SmilesMessage {
+    smi: String,
+    messages: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct SanitizationResponseFixed {
+    original: SmilesMessage,
+    standardized: SmilesMessage,
+}
+
+#[derive(Deserialize, Debug)]
+struct SanitizationResponseNoErrors {
+    smi: String,
+    messages: Vec<String>,
+}
+
+// Enum to handle the two possible successful JSON structures
+#[derive(Deserialize, Debug)]
+#[serde(untagged)] // Allows deserializing into the first matching variant
+enum SanitizationResult {
+    Fixed(SanitizationResponseFixed),
+    NoErrors(SanitizationResponseNoErrors),
 }
 
 // Structure to deserialize the /chem/descriptors response for molecular formula
@@ -37,6 +67,58 @@ struct ConvertResponse {
 }
 
 const API_BASE_URL: &str = "https://api.naturalproducts.net/latest";
+
+// Step 1: Sanitize SMILES using /chem/errors?fix=true
+async fn sanitize_smiles(smiles: &str, client: &reqwest::Client) -> Result<String> {
+    let url = format!("{}/chem/errors", API_BASE_URL);
+    info!("Sanitizing SMILES: {}", smiles);
+
+    let response = client
+        .get(&url)
+        .query(&[("smiles", smiles), ("fix", "true")])
+        .send()
+        .await
+        .map_err(CrateError::ApiRequestError)?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_else(|_| "<failed to read body>".to_string());
+        warn!("SMILES sanitization API call failed for {}: Status {} - {}", smiles, status, error_text);
+        return Err(CrateError::SmilesSanitizationFailed {
+            input_smiles: smiles.to_string(),
+            reason: format!("API returned status {}", status),
+        });
+    }
+
+    // Need to read the body first to check if it's plain text error
+    let response_text = response.text().await.map_err(CrateError::ApiRequestError)?;
+    if response_text.contains("Error reading SMILES string") {
+        warn!("SMILES sanitization failed for {}: API reported error reading SMILES", smiles);
+        return Err(CrateError::SmilesSanitizationFailed {
+            input_smiles: smiles.to_string(),
+            reason: "API could not read SMILES string".to_string(),
+        });
+    }
+
+    // Attempt to parse the JSON
+    match serde_json::from_str::<SanitizationResult>(&response_text) {
+        Ok(SanitizationResult::Fixed(res)) => {
+            info!("Sanitized SMILES (fixed): {} -> {}", res.original.smi, res.standardized.smi);
+            Ok(res.standardized.smi)
+        }
+        Ok(SanitizationResult::NoErrors(res)) => {
+            info!("Sanitized SMILES (no errors): {}", res.smi);
+            Ok(res.smi)
+        }
+        Err(e) => {
+            warn!("Failed to decode SMILES sanitization JSON response for {}: {}. Response text: {}", smiles, e, response_text);
+            Err(CrateError::SmilesSanitizationFailed {
+                input_smiles: smiles.to_string(),
+                reason: format!("Failed to parse API response: {}", e),
+            })
+        }
+    }
+}
 
 // Helper to fetch a single value from a /convert/* endpoint
 async fn fetch_converted_value(endpoint: &str, smiles: &str, client: &reqwest::Client) -> Result<Option<String>> {
@@ -110,9 +192,28 @@ async fn fetch_descriptors(smiles: &str, client: &reqwest::Client) -> Result<Opt
     }
 }
 
+// Helper to fetch error details from /chem/errors
+
 // Enriches a single InputRecord with data from the API using specific endpoints
 pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Result<EnrichedData> {
     let smiles = &record.chemical_entity_smiles;
+
+    let sanitized_smiles = sanitize_smiles(smiles, client).await?;
+    info!("Sanitized SMILES: {}", sanitized_smiles);
+    // Check if the sanitized SMILES is empty or invalid
+    if sanitized_smiles.is_empty() {
+        return Err(CrateError::SmilesSanitizationFailed {
+            input_smiles: smiles.clone(),
+            reason: "Sanitized SMILES is empty".to_string(),
+        });
+    }
+    // Check if the sanitized SMILES is different from the original
+    if sanitized_smiles != *smiles {
+        info!("Sanitized SMILES differs from original: {} -> {}", smiles, sanitized_smiles);
+    }
+    // Proceed with the sanitized SMILES for further API calls 
+    let smiles = &sanitized_smiles;
+    info!("Using sanitized SMILES for further API calls: {}", smiles);
 
     // Fetch data concurrently
     let (canon_smiles_res, inchi_res, inchikey_res, descriptors_res) = tokio::join!(
@@ -146,6 +247,7 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
     Ok(EnrichedData {
         chemical_entity_name: record.chemical_entity_name,
         input_smiles: smiles.clone(),
+        sanitized_smiles,
         taxon_name: record.taxon_name,
         reference_doi: record.reference_doi,
         canonical_smiles,
