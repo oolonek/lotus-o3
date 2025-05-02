@@ -1,0 +1,5 @@
+chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi
+Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Coffea arabica,10.1016/0031-9422(90)85266-I
+Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Coffea arabica,10.1007/BF00269231
+Theobromine,CN1C=NC2=C1C(=O)NC(=O)N2C,Theobroma cacao,10.1016/S0031-9422(00)83024-1
+NonExistentCompound,CCCCCCCCCCC,Fake Taxon,10.9999/fake.doi
