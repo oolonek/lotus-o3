@@ -11,11 +11,7 @@ pub enum CrateError {
     #[error("Missing required CSV header: {0}")]
     MissingHeader(String),
 
-    #[error(
-        "Missing required value in column 
-'{column}
-' at row {row}"
-    )]
+    #[error("Missing required value in column '{column}' at row {row}")]
     MissingValue { column: String, row: usize },
 
     #[error("API request error: {0}")]
