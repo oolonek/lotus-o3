@@ -10,17 +10,25 @@ use csv_handler::load_and_validate_csv;
 use enrichment::enrich_record;
 use error::{CrateError, Result};
 use log::{error, info, warn};
+use reqwest::dns::Name;
 use reqwest::Client;
 use std::fs::File;
 use std::io::BufWriter;
 use std::time::Instant;
 use wikidata::checker::check_wikidata;
 use wikidata::writer::generate_quickstatements;
+use indicatif::{ProgressBar, ProgressStyle};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logger
-    env_logger::init();
+    // env_logger::init();
+    env_logger::Builder::from_default_env()
+    .format_target(false) // Option: to hide the module path prefix for cleaner logs
+    .format_timestamp_secs() // Option: to have simpler timestamps
+    .filter_level(log::LevelFilter::Info) // Set a default filter level (e.g., Info)
+    .try_init() // Use try_init() to handle potential errors if logger is already set
+    .expect("Failed to initialize logger"); // Or handle the error more gracefully
 
     // Parse CLI arguments
     let cli = Cli::parse();
@@ -61,10 +69,24 @@ async fn main() -> Result<()> {
     
     let mut processed_data = Vec::new();
     let mut errors_count = 0;
+    let mut error_details: Vec<String> = Vec::new();
+
+    // Initialize the progress bar
+    let num_records = input_records.len() as u64;
+    let pb = ProgressBar::new(num_records);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg}")
+        .expect("Failed to set progress bar style") // Added expect for error handling
+        .progress_chars("##-"));
 
     for (index, record) in input_records.into_iter().enumerate() {
         let row_num = index + 2; // CSV row number (1-based + header)
         let smiles = record.chemical_entity_smiles.clone(); // Clone for error reporting
+        let chemical_entity_name = record.chemical_entity_name.clone(); // Clone for error reporting
+
+        // Update progress bar message (optional)
+        pb.set_message(format!("Processing: {} ({})", chemical_entity_name, smiles));
+
         
         match enrich_record(record, &client).await {
             Ok(enriched) => {
@@ -74,17 +96,27 @@ async fn main() -> Result<()> {
                         processed_data.push((enriched, wikidata_info));
                     }
                     Err(e) => {
-                        error!("Row {}: Wikidata check failed for InChIKey {}: {}", row_num, inchikey, e);
+                        let error_message = format!("Row {}: Wikidata check failed for InChIKey {}: {}", row_num, inchikey, e);
+                        pb.println(format!("Error (Wikidata check) for row {}: {} - {}", row_num, inchikey, e)); // For progress bar
+                        error!("{}", error_message); // Your existing log
+                        error_details.push(error_message);
                         errors_count += 1;
                     }
                 }
             }
             Err(e) => {
-                error!("Row {}: Enrichment failed for SMILES {}: {}", row_num, smiles, e);
+                let error_message = format!("Row {}: Enrichment failed for SMILES {}: {}", row_num, smiles, e);
+                pb.println(format!("Error (Enrichment) for row {}: {} - {}", row_num, smiles, e)); // For progress bar
+                error!("{}", error_message); // Your existing log
+                error_details.push(error_message); // <<< ADD THIS LINE
                 errors_count += 1;
             }
         }
+        pb.inc(1); // Increment the progress bar
     }
+
+    // Finish the progress bar
+    pb.finish_with_message("Record processing complete.");
 
     info!(
         "Finished processing records. {} successful, {} errors.",
@@ -104,7 +136,7 @@ async fn main() -> Result<()> {
                         error!("Failed to generate QuickStatements: {}", e);
                         return Err(e);
                     }
-                    info!("Successfully generated QuickStatements file.");
+                    info!("Successfully generated QuickStatements file at: {:?}", output_path);
                 }
                 Err(e) => {
                     error!("Failed to create output file {:?}: {}", output_path, e);
@@ -127,10 +159,20 @@ async fn main() -> Result<()> {
 
     // Basic Summary Report
     println!("\n--- Summary Report ---");
-    println!("Total records processed: {}", processed_data.len() + errors_count);
-    println!("Successfully processed: {}", processed_data.len());
-    println!("Errors encountered: {}", errors_count);
+    println!("Total CSV records read (from initial validation): {}", processed_data.len() + errors_count); // Clarified this count
+    println!("Successfully processed (passed enrichment and Wikidata checks): {}", processed_data.len());
+    println!("Errors encountered during processing: {}", errors_count);
+    
+    if !error_details.is_empty() { // <<< ADD THIS BLOCK
+        println!("\n--- Detailed Errors ---");
+        for detail in error_details {
+            println!("- {}", detail);
+        }
+    }
+    
     // TODO: Add more detailed stats (new chemicals, new occurrences, etc.)
+    println!("Execution time: {:.2?}", duration);
+
 
     Ok(())
 }

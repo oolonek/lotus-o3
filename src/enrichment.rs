@@ -228,7 +228,6 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
     let inchi = inchi_res?;
     let inchikey = inchikey_res?;
     let descriptors_opt = descriptors_res?; // This returns Result<Option<DescriptorsResponse>>
-
     let molecular_formula = descriptors_opt.as_ref().and_then(|d| d.molecular_formula.clone());
     let other_descriptors = descriptors_opt.map(|d| d.other);
 
