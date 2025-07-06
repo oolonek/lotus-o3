@@ -43,7 +43,8 @@ struct SparqlBinding {
 }
 
 const WIKIDATA_SPARQL_URL: &str = "https://query.wikidata.org/sparql";
-pub const USER_AGENT: &str = "lotus-o3/0.1 (https://github.com/your_repo; your_email@example.com) reqwest/0.11"; // Replace with actual info
+pub const USER_AGENT: &str =
+    "lotus-o3/0.1 (https://github.com/your_repo; your_email@example.com) reqwest/0.11"; // Replace with actual info
 
 // Helper function to execute a SPARQL query and parse the result
 async fn execute_sparql_query(query: &str, client: &reqwest::Client) -> Result<SparqlResponse> {
@@ -58,7 +59,9 @@ async fn execute_sparql_query(query: &str, client: &reqwest::Client) -> Result<S
 
     if !response.status().is_success() {
         // Use SparqlQueryError for non-2xx status codes from the SPARQL endpoint
-        return Err(CrateError::SparqlQueryError(response.error_for_status().unwrap_err()));
+        return Err(CrateError::SparqlQueryError(
+            response.error_for_status().unwrap_err(),
+        ));
     }
 
     // Use SparqlJsonDecodeError for errors during JSON decoding from response body
@@ -88,18 +91,14 @@ fn extract_qid(response: &SparqlResponse, var_name: &str) -> Option<String> {
 
 // Check for chemical entity by InChIKey (P235)
 async fn check_chemical(inchikey: &str, client: &reqwest::Client) -> Result<Option<String>> {
-    let query = format!(
-        "SELECT ?item WHERE {{ ?item wdt:P235 \"{inchikey}\". }}"
-    );
+    let query = format!("SELECT ?item WHERE {{ ?item wdt:P235 \"{inchikey}\". }}");
     let response = execute_sparql_query(&query, client).await?;
     Ok(extract_qid(&response, "item"))
 }
 
 // Check for taxon by name
 async fn check_taxon(taxon_name: &str, client: &reqwest::Client) -> Result<Option<String>> {
-    let query = format!(
-        "SELECT ?item WHERE {{ ?item wdt:P225 \"{taxon_name}\". }}"
-    );
+    let query = format!("SELECT ?item WHERE {{ ?item wdt:P225 \"{taxon_name}\". }}");
     let response = execute_sparql_query(&query, client).await?;
     Ok(extract_qid(&response, "item"))
 }
@@ -108,7 +107,17 @@ async fn check_taxon(taxon_name: &str, client: &reqwest::Client) -> Result<Optio
 async fn check_reference(doi: &str, client: &reqwest::Client) -> Result<Option<String>> {
     let doi_upper = doi.to_uppercase();
     let query = format!(
-        "SELECT ?item WHERE {{ ?item wdt:P356 \"{doi_upper}\". }}"
+        // We make sure to handle DOI of scholarly articles
+        // by using the SERVICE clause for scholarly articles. See Wikidata graph split.
+        "SELECT ?item WHERE {{
+            {{
+                ?item wdt:P356 \"{doi_upper}\".
+            }} UNION {{
+                SERVICE wdsubgraph:scholarly_articles {{
+                    ?item wdt:P356 \"{doi_upper}\".
+                }}
+            }}
+        }}"
     );
     let response = execute_sparql_query(&query, client).await?;
     Ok(extract_qid(&response, "item"))
@@ -122,7 +131,7 @@ async fn check_occurrence(
     client: &reqwest::Client,
 ) -> Result<bool> {
     let query = format!(
-        // I need smt like 
+        // I need smt like
         // ASK WHERE {
         //     wd:Q213511 p:P703 ?statement.
         //     ?statement ps:P703 wd:Q2355919;
@@ -137,23 +146,32 @@ async fn check_occurrence(
         }}"
     );
     let response = execute_sparql_query(&query, client).await?;
-    response.boolean.ok_or_else(|| CrateError::SparqlResponseFormatError("Missing or invalid \'boolean\' field in ASK WHERE response".to_string()))
+    response.boolean.ok_or_else(|| {
+        CrateError::SparqlResponseFormatError(
+            "Missing or invalid \'boolean\' field in ASK WHERE response".to_string(),
+        )
+    })
 }
 
-
 // Main function to check entities and occurrence for a given enriched record
-pub async fn check_wikidata(record: &EnrichedData, client: &reqwest::Client) -> Result<WikidataInfo> {
-    let inchikey = record.inchikey.as_deref().ok_or_else(|| CrateError::MissingDescriptor {
-        descriptor: "inchikey".to_string(),
-        smiles: record.input_smiles.clone(),
-    })?;
+pub async fn check_wikidata(
+    record: &EnrichedData,
+    client: &reqwest::Client,
+) -> Result<WikidataInfo> {
+    let inchikey = record
+        .inchikey
+        .as_deref()
+        .ok_or_else(|| CrateError::MissingDescriptor {
+            descriptor: "inchikey".to_string(),
+            smiles: record.input_smiles.clone(),
+        })?;
 
     let chemical_qid_fut = check_chemical(inchikey, client);
     let taxon_qid_fut = check_taxon(&record.taxon_name, client);
     let reference_qid_fut = check_reference(&record.reference_doi, client);
 
     // Execute entity checks concurrently
-    let (chemical_result, taxon_result, reference_result) = 
+    let (chemical_result, taxon_result, reference_result) =
         tokio::join!(chemical_qid_fut, taxon_qid_fut, reference_qid_fut);
 
     // Collect entity results, propagating the first error encountered
@@ -206,16 +224,19 @@ mod tests {
         record.taxon_name = "Homo sapiens".to_string(); // Use a known taxon
         record.reference_doi = "10.1038/nature02403".to_string(); // Example DOI
 
-        let client = reqwest::Client::builder().user_agent(USER_AGENT).build().unwrap();
+        let client = reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .build()
+            .unwrap();
         let info = check_wikidata(&record, &client).await.unwrap();
-        
+
         assert!(info.chemical_qid.is_some());
         // Note: QID might change, this is illustrative
         // Example QID for Methane is Q21 methane, but SPARQL returns just Q21
-        assert_eq!(info.chemical_qid.unwrap(), "Q21"); 
+        assert_eq!(info.chemical_qid.unwrap(), "Q21");
         assert!(info.taxon_qid.is_some());
         assert_eq!(info.taxon_qid.unwrap(), "Q15978631"); // Homo sapiens
-        assert!(info.reference_qid.is_some()); 
+        assert!(info.reference_qid.is_some());
         // Occurrence check depends on whether this specific triple exists
         // println!("Occurrence exists: {}", info.occurrence_exists);
     }
@@ -225,7 +246,10 @@ mod tests {
     async fn test_check_nonexistent_chemical_live() {
         let mut record = create_test_enriched_data();
         record.inchikey = Some("AAAAAAAAAAAAAAAAAAAAAAAAAA-UHFFFAOYSA-N".to_string()); // Fake InChIKey
-        let client = reqwest::Client::builder().user_agent(USER_AGENT).build().unwrap();
+        let client = reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .build()
+            .unwrap();
         let info = check_wikidata(&record, &client).await.unwrap();
         assert!(info.chemical_qid.is_none());
         // Occurrence check should be false as chemical_qid is None
@@ -238,12 +262,17 @@ mod tests {
     async fn test_check_erythromycin_live() {
         let mut record = create_test_enriched_data();
         record.chemical_entity_name = "Erythromycin".to_string();
-        record.input_smiles = "CCC(C)C(C1C(C(C(C(=O)O1)C)OC2CC(C(C(O2)C)O)(C)OC)OC3C(C(C(C(O3)C)O)N(C)C)O)O".to_string(); // Example SMILES
+        record.input_smiles =
+            "CCC(C)C(C1C(C(C(C(=O)O1)C)OC2CC(C(C(O2)C)O)(C)OC)OC3C(C(C(C(O3)C)O)N(C)C)O)O"
+                .to_string(); // Example SMILES
         record.inchikey = Some("ULGZDMOVFRHVEP-RWJQBGPGSA-N".to_string()); // Erythromycin InChIKey
         record.taxon_name = "Streptomyces coelicolor".to_string(); // Corrected Taxon Name
         record.reference_doi = "10.1021/BI965010K".to_string(); // Corrected DOI
 
-        let client = reqwest::Client::builder().user_agent(USER_AGENT).build().unwrap();
+        let client = reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .build()
+            .unwrap();
         let info = check_wikidata(&record, &client).await.unwrap();
 
         // We display info for debugging
@@ -253,12 +282,12 @@ mod tests {
         println!("Occurrence exists: {:?}", info.occurrence_exists);
         // Assertions
 
-        
         assert!(info.chemical_qid.is_some());
         assert_eq!(info.chemical_qid.unwrap(), "Q213511"); // Corrected Chemical QID
         assert!(info.taxon_qid.is_some());
         assert_eq!(info.taxon_qid.unwrap(), "Q2355919"); // Corrected Taxon QID
-        assert!(info.reference_qid.is_some()); 
+        assert!(info.reference_qid.is_some());
+        assert_eq!(info.reference_qid.unwrap(), "Q105275116"); // Corrected Reference QID
         // Occurrence check depends on whether this specific triple exists
         // println!("Occurrence exists: {}", info.occurrence_exists);
     }
@@ -266,4 +295,3 @@ mod tests {
     // Add more tests for taxon, reference, occurrence, and error cases
     // Consider using a mock SPARQL server (e.g., using wiremock-rs)
 }
-

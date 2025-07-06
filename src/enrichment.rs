@@ -1,10 +1,10 @@
 use crate::csv_handler::InputRecord;
 use crate::error::{CrateError, Result};
+use log::info;
+use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use log::warn;
-use log::info;
 
 // Holds the input data plus data fetched from the Chemoinformatics API.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -23,12 +23,12 @@ pub struct EnrichedData {
     pub other_descriptors: Option<HashMap<String, Value>>,
 }
 
-// --- Structs for /chem/errors?fix=true response --- 
+// --- Structs for /chem/errors?fix=true response ---
 
 #[derive(Deserialize, Debug)]
 struct SmilesMessage {
     smi: String,
-    messages: Vec<String>,
+    messages: Vec<Vec<Value>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -82,8 +82,14 @@ async fn sanitize_smiles(smiles: &str, client: &reqwest::Client) -> Result<Strin
 
     if !response.status().is_success() {
         let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "<failed to read body>".to_string());
-        warn!("SMILES sanitization API call failed for {}: Status {} - {}", smiles, status, error_text);
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".to_string());
+        warn!(
+            "SMILES sanitization API call failed for {}: Status {} - {}",
+            smiles, status, error_text
+        );
         return Err(CrateError::SmilesSanitizationFailed {
             input_smiles: smiles.to_string(),
             reason: format!("API returned status {}", status),
@@ -93,7 +99,10 @@ async fn sanitize_smiles(smiles: &str, client: &reqwest::Client) -> Result<Strin
     // Need to read the body first to check if it's plain text error
     let response_text = response.text().await.map_err(CrateError::ApiRequestError)?;
     if response_text.contains("Error reading SMILES string") {
-        warn!("SMILES sanitization failed for {}: API reported error reading SMILES", smiles);
+        warn!(
+            "SMILES sanitization failed for {}: API reported error reading SMILES",
+            smiles
+        );
         return Err(CrateError::SmilesSanitizationFailed {
             input_smiles: smiles.to_string(),
             reason: "API could not read SMILES string".to_string(),
@@ -103,7 +112,10 @@ async fn sanitize_smiles(smiles: &str, client: &reqwest::Client) -> Result<Strin
     // Attempt to parse the JSON
     match serde_json::from_str::<SanitizationResult>(&response_text) {
         Ok(SanitizationResult::Fixed(res)) => {
-            info!("Sanitized SMILES (fixed): {} -> {}", res.original.smi, res.standardized.smi);
+            info!(
+                "Sanitized SMILES (fixed): {} -> {}",
+                res.original.smi, res.standardized.smi
+            );
             Ok(res.standardized.smi)
         }
         Ok(SanitizationResult::NoErrors(res)) => {
@@ -111,7 +123,10 @@ async fn sanitize_smiles(smiles: &str, client: &reqwest::Client) -> Result<Strin
             Ok(res.smi)
         }
         Err(e) => {
-            warn!("Failed to decode SMILES sanitization JSON response for {}: {}. Response text: {}", smiles, e, response_text);
+            warn!(
+                "Failed to decode SMILES sanitization JSON response for {}: {}. Response text: {}",
+                smiles, e, response_text
+            );
             Err(CrateError::SmilesSanitizationFailed {
                 input_smiles: smiles.to_string(),
                 reason: format!("Failed to parse API response: {}", e),
@@ -121,9 +136,13 @@ async fn sanitize_smiles(smiles: &str, client: &reqwest::Client) -> Result<Strin
 }
 
 // Helper to fetch a single value from a /convert/* endpoint
-async fn fetch_converted_value(endpoint: &str, smiles: &str, client: &reqwest::Client) -> Result<Option<String>> {
+async fn fetch_converted_value(
+    endpoint: &str,
+    smiles: &str,
+    client: &reqwest::Client,
+) -> Result<Option<String>> {
     let url = format!("{}/convert/{}", API_BASE_URL, endpoint);
-    
+
     let response = client
         .get(&url)
         .query(&[("smiles", smiles)])
@@ -135,7 +154,9 @@ async fn fetch_converted_value(endpoint: &str, smiles: &str, client: &reqwest::C
         // Log warning but don't fail the whole enrichment if one conversion fails
         warn!(
             "API call to /convert/{} failed for SMILES {}: Status {}",
-            endpoint, smiles, response.status()
+            endpoint,
+            smiles,
+            response.status()
         );
         // Optionally read body for more details if needed
         // let error_body = response.text().await.unwrap_or_else(|_| "<failed to read body>".to_string());
@@ -144,12 +165,15 @@ async fn fetch_converted_value(endpoint: &str, smiles: &str, client: &reqwest::C
     }
 
     // Attempt to parse as JSON first, fallback to plain text
-    let response_bytes = response.bytes().await.map_err(CrateError::ApiRequestError)?;
-    
+    let response_bytes = response
+        .bytes()
+        .await
+        .map_err(CrateError::ApiRequestError)?;
+
     if let Ok(json_response) = serde_json::from_slice::<ConvertResponse>(&response_bytes) {
         Ok(Some(json_response.value))
     } else if let Ok(text_response) = String::from_utf8(response_bytes.to_vec()) {
-         // Trim potential quotes or whitespace from plain text response
+        // Trim potential quotes or whitespace from plain text response
         Ok(Some(text_response.trim().trim_matches('"').to_string()))
     } else {
         warn!(
@@ -161,7 +185,10 @@ async fn fetch_converted_value(endpoint: &str, smiles: &str, client: &reqwest::C
 }
 
 // Helper to fetch molecular formula (and other descriptors) from /chem/descriptors
-async fn fetch_descriptors(smiles: &str, client: &reqwest::Client) -> Result<Option<DescriptorsResponse>> {
+async fn fetch_descriptors(
+    smiles: &str,
+    client: &reqwest::Client,
+) -> Result<Option<DescriptorsResponse>> {
     let url = format!("{}/chem/descriptors", API_BASE_URL);
 
     let response = client
@@ -174,7 +201,8 @@ async fn fetch_descriptors(smiles: &str, client: &reqwest::Client) -> Result<Opt
     if !response.status().is_success() {
         warn!(
             "API call to /chem/descriptors failed for SMILES {}: Status {}",
-            smiles, response.status()
+            smiles,
+            response.status()
         );
         return Ok(None);
     }
@@ -209,9 +237,12 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
     }
     // Check if the sanitized SMILES is different from the original
     if sanitized_smiles != *smiles {
-        info!("Sanitized SMILES differs from original: {} -> {}", smiles, sanitized_smiles);
+        info!(
+            "Sanitized SMILES differs from original: {} -> {}",
+            smiles, sanitized_smiles
+        );
     }
-    // Proceed with the sanitized SMILES for further API calls 
+    // Proceed with the sanitized SMILES for further API calls
     let smiles = &sanitized_smiles;
     info!("Using sanitized SMILES for further API calls: {}", smiles);
 
@@ -228,7 +259,9 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
     let inchi = inchi_res?;
     let inchikey = inchikey_res?;
     let descriptors_opt = descriptors_res?; // This returns Result<Option<DescriptorsResponse>>
-    let molecular_formula = descriptors_opt.as_ref().and_then(|d| d.molecular_formula.clone());
+    let molecular_formula = descriptors_opt
+        .as_ref()
+        .and_then(|d| d.molecular_formula.clone());
     let other_descriptors = descriptors_opt.map(|d| d.other);
 
     // Basic check: InChIKey is crucial for Wikidata lookup
@@ -238,10 +271,10 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
             smiles: smiles.clone(),
         });
     }
-    
+
     // Note: Isomeric SMILES endpoint wasn't specified, using canonical for now.
     // If the API provides it via /convert/isomericSMILES or similar, add another call.
-    let isomeric_smiles = canonical_smiles.clone(); 
+    let isomeric_smiles = canonical_smiles.clone();
 
     Ok(EnrichedData {
         chemical_entity_name: record.chemical_entity_name,
@@ -277,17 +310,48 @@ mod tests {
         let enriched_data = enrich_record(record, &client).await.unwrap();
 
         assert!(enriched_data.inchikey.is_some());
-        assert_eq!(enriched_data.inchikey.unwrap(), "RYYVLZVUVIJVGH-UHFFFAOYSA-N");
+        assert_eq!(
+            enriched_data.inchikey.unwrap(),
+            "RYYVLZVUVIJVGH-UHFFFAOYSA-N"
+        );
         assert!(enriched_data.molecular_formula.is_some());
         assert_eq!(enriched_data.molecular_formula.unwrap(), "C8H10N4O2");
         assert!(enriched_data.canonical_smiles.is_some());
         // Canonical SMILES can sometimes vary slightly depending on the algorithm
-        assert_eq!(enriched_data.canonical_smiles.unwrap(), "CN1C=NC2=C1C(=O)N(C)C(=O)N2C");
+        assert_eq!(
+            enriched_data.canonical_smiles.unwrap(),
+            "CN1C=NC2=C1C(=O)N(C)C(=O)N2C"
+        );
         assert!(enriched_data.inchi.is_some());
-        assert!(enriched_data.inchi.unwrap().starts_with("InChI=1S/C8H10N4O2/"));
+        assert!(
+            enriched_data
+                .inchi
+                .unwrap()
+                .starts_with("InChI=1S/C8H10N4O2/")
+        );
     }
 
     // Test case for a known problematic SMILES or one that might lack certain descriptors
     // Add more tests, including error cases and potentially mocking
+    #[tokio::test]
+    #[ignore] // Ignored by default to avoid hitting external API during normal tests
+    async fn test_enrich_invalid_smiles() {
+        let record = InputRecord {
+            chemical_entity_name: "InvalidCompound".to_string(),
+            chemical_entity_smiles: "Cl/C=C/1\\C=C2[C@]3([C@H]1OC(=O)C(C)CCCCCCC(CC([C@]1([C@@H]4[C@H]([C@@]52OC(O4)(O[C@@H]1[C@@H]5[C@H]1[C@]([C@H]3O)(CO)O1)c1ccccc1)C)O)(O)COC(=O)c1ccccc1)C)O".to_string(),
+            taxon_name: "Trigonostemon cherrieri".to_string(),
+            reference_doi: "10.1016/J.PHYTOCHEM.2012.07.023".to_string(),
+        };
+        let client = reqwest::Client::new();
+        let result = enrich_record(record, &client).await;
+        assert!(
+            result.is_err(),
+            "Expected enrichment to fail for invalid SMILES"
+        );
+        if let Err(e) = result {
+            assert!(matches!(e, CrateError::SmilesSanitizationFailed { .. })) // Check if the error is specifically about SMILES sanitization
+        } else {
+            panic!("Expected an error but got Ok result");
+        }
+    }
 }
-

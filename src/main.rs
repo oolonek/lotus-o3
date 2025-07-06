@@ -124,6 +124,33 @@ async fn main() -> Result<()> {
         errors_count
     );
 
+
+    // Calculate additional statistics
+    let mut new_chemicals_to_create = 0;
+    let mut new_occurrences_to_create = 0;
+
+    for (enriched_data_item, wikidata_info_item) in &processed_data {
+        // Check for new chemicals
+        if wikidata_info_item.chemical_qid.is_none() {
+            new_chemicals_to_create += 1;
+        }
+
+        // Check for new occurrences to be created
+        // An occurrence will be created if it doesn't exist AND
+        // (the chemical QID exists OR it's a new chemical being created) AND
+        // the taxon QID exists AND the reference QID exists.
+        if !wikidata_info_item.occurrence_exists {
+            let chemical_will_have_qid = wikidata_info_item.chemical_qid.is_some() || 
+                                        (wikidata_info_item.chemical_qid.is_none() && enriched_data_item.inchikey.is_some()); // Assuming new chem needs at least an InChIKey to be valid
+            
+            if chemical_will_have_qid && 
+            wikidata_info_item.taxon_qid.is_some() && 
+            wikidata_info_item.reference_qid.is_some() {
+                new_occurrences_to_create += 1;
+            }
+        }
+    }
+
     // 3. Output Generation
     match cli.mode {
         OutputMode::QuickStatements => {
@@ -161,6 +188,9 @@ async fn main() -> Result<()> {
     println!("\n--- Summary Report ---");
     println!("Total CSV records read (from initial validation): {}", processed_data.len() + errors_count); // Clarified this count
     println!("Successfully processed (passed enrichment and Wikidata checks): {}", processed_data.len());
+    println!("New chemical entities to be created: {}", new_chemicals_to_create);
+    println!("New occurrence statements to be created: {}", new_occurrences_to_create);
+    
     println!("Errors encountered during processing: {}", errors_count);
     
     if !error_details.is_empty() { // <<< ADD THIS BLOCK

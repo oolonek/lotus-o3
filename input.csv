@@ -1,6 +1,9 @@
 chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi
 Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Coffea arabica,10.1016/0031-9422(90)85266-I
-Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Coffea arabica,10.1007/BF00269231
+Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Coffea arabica,10.1021/BI965010K
+Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Trigonostemon cherrieri,10.1093/ANB/9780198606697.ARTICLE.0401011
 Theobromine,CN1C=NC2=C1C(=O)NC(=O)N2C,Theobroma cacao,10.1016/S0031-9422(00)83024-1
 NonExistentCompound,CCCCCCCCCCC,Fake Taxon,10.9999/fake.doi
-Trigocherriolide C,C[C@@H]1[C@@H]2OC(O)(O[C@@]11C3C[C@]2(O)[C@](C)(O)C[C@@H](C)CCCCCC[C@H](C)C(=O)O[C@H]2C(C=C1[C@]2(O)[C@H](O)[C@@]1(CO)O[C@@H]31)=C(Cl)Cl)c1ccccc1,Trigonostemon cherrieri,10.1016/J.PHYTOCHEM.2012.07.023
+Trigocherriolide C,Cl/C=C/1\\C=C2[C@]3([C@H]1OC(=O)C(C)CCCCCCC(CC([C@]1([C@@H]4[C@H]([C@@]52OC(O4)(O[C@@H]1[C@@H]5[C@H]1[C@]([C@H]3O)(CO)O1)c1ccccc1)C)O)(O)COC(=O)c1ccccc1)C)O,Trigonostemon cherrieri,10.1016/J.PHYTOCHEM.2012.07.023
+Trigocherriolide D,CC1CCCCCCC(C)C(=O)OC2C(=CCl)C=C3C2(O)C(O)C2(CO)OC2C2C4OC5(c6ccccc6)OC(C(C)C32O5)C4(O)C(O)(COC(=O)c2ccccc2)C1,Trigonostemon cherrieri,10.1016/J.PHYTOCHEM.2012.07.023
+Trigocherriolide E,CC1CCCCCCC(C)C(=O)O[C@H]2/C(=C/Cl)C=C3[C@]2(O)[C@H](O)[C@@]2(CO)O[C@H]2[C@H]2[C@H]4OC5(c6ccccc6)O[C@@H]([C@@H](C)[C@]32O5)[C@]4(O)C(O)(COC(=O)c2ccccc2)C1,Trigonostemon cherrieri,10.1016/J.PHYTOCHEM.2012.07.023

@@ -59,7 +59,7 @@ pub fn generate_quickstatements(
         }
 
         // 2. Add Occurrence Statement if it doesn't exist and all QIDs are present
-        if !info.occurrence_exists && info.chemical_qid.is_none() {
+        if !info.occurrence_exists && info.chemical_qid.is_some() {
             match (&current_chemical_qid, &info.taxon_qid, &info.reference_qid) {
                 (Some(chem_qid), Some(tax_qid), Some(ref_qid)) => {
                     // Add P703 (found in taxon) statement with S248 (stated in) reference
@@ -67,6 +67,14 @@ pub fn generate_quickstatements(
                         "{}\tP703\t{}\tS248\t{}",
                         chem_qid, tax_qid, ref_qid
                     ));
+                    // Log or report that occurrence was added
+                    eprintln!(
+                        "Added occurrence for {} - Chem: {:?}, Taxon: {:?}, Ref: {:?}",
+                        data.inchikey.as_deref().unwrap_or("N/A"),
+                        chem_qid,
+                        tax_qid,
+                        ref_qid
+                    );
                 }
                 _ => {
                     // Log or report that occurrence couldn't be added due to missing QIDs
@@ -154,6 +162,7 @@ mod tests {
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         let lines: Vec<&str> = output.trim().split('\n').collect();
+        println!("Generated QuickStatements:\n{}", output);
 
         assert!(lines.contains(&"CREATE"));
         // Use raw strings r#"..."# to avoid issues with escapes
@@ -165,7 +174,7 @@ mod tests {
         assert!(lines.contains(&r#"LAST	P235	"VNWKTOKETHGBQD-UHFFFAOYSA-N""#)); // InChIKey
         assert!(lines.contains(&r#"LAST	P274	"CH4""#)); // Formula
         // Check occurrence statement using the temporary ID
-        assert!(lines.contains(&r#"CREATE_1	P703	Q2	S248	Q3"#));
+        assert!(lines.contains(&r#"LAST	P703	Q2	S248	Q3"#));
     }
 
     #[test]
@@ -215,11 +224,12 @@ mod tests {
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         let lines: Vec<&str> = output.trim().split('\n').collect();
+        println!("Generated QuickStatements:\n{}", output);
 
         // Check commands for first record (creation + occurrence)
         assert!(lines.contains(&"CREATE"));
         assert!(lines.contains(&r#"LAST	Len	"TestChem""#));
-        assert!(lines.contains(&r#"CREATE_1	P703	Q2	S248	Q3"#));
+        assert!(lines.contains(&r#"LAST	P703	Q2	S248	Q3"#));
         // Check command for second record (occurrence only)
         assert!(lines.contains(&r#"Q4	P703	Q5	S248	Q6"#));
         // Check that nothing was generated for the third record
