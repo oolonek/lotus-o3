@@ -157,7 +157,18 @@ async fn main() -> Result<()> {
     );
 
     let chemical_creation_plan = plan_chemical_creations(&processed_data);
-    let record_reports = build_record_reports(&processed_data, &chemical_creation_plan);
+    let (reference_creation_plan, planned_reference_dois) =
+        plan_reference_creations(&processed_data);
+    let pending_chemical_creations = chemical_creation_plan.iter().any(|flag| *flag);
+    let pending_reference_creations = reference_creation_plan.iter().any(|flag| *flag);
+    let emit_occurrences = !(pending_chemical_creations || pending_reference_creations);
+    let record_reports = build_record_reports(
+        &processed_data,
+        &chemical_creation_plan,
+        &reference_creation_plan,
+        &planned_reference_dois,
+        emit_occurrences,
+    );
     let chemical_creations = record_reports.iter().filter(|r| r.create_chemical).count();
     let reference_creations = record_reports.iter().filter(|r| r.create_reference).count();
     let occurrence_creations = record_reports
@@ -180,6 +191,10 @@ async fn main() -> Result<()> {
         .iter()
         .filter(|r| !r.issues.is_empty())
         .count();
+    let batch_blocked_occurrences = record_reports
+        .iter()
+        .filter(|r| r.occurrence_waiting_on_batch)
+        .count();
 
     // 3. Output Generation
     let mut status_report_path: Option<PathBuf> = None;
@@ -197,6 +212,8 @@ async fn main() -> Result<()> {
                     if let Err(e) = generate_quickstatements(
                         &processed_data,
                         &chemical_creation_plan,
+                        &reference_creation_plan,
+                        emit_occurrences,
                         &mut writer,
                     ) {
                         error!("Failed to generate QuickStatements: {}", e);
@@ -257,13 +274,26 @@ async fn main() -> Result<()> {
 rerun this tool after the reference batch finishes to emit those occurrences."
         );
     }
+    if batch_blocked_occurrences > 0 {
+        println!(
+            "Occurrence statements deferred because new item creations are pending: {}",
+            batch_blocked_occurrences
+        );
+        println!(
+            "  Run lotus-o3 again after submitting this batch so those occurrences can cite finalized QIDs."
+        );
+    } else if !emit_occurrences {
+        println!(
+            "Occurrence statements were skipped because chemical/reference creations are still pending."
+        );
+    }
     if chemical_deferred_occurrences > 0 {
         println!(
-            "Occurrence statements waiting on duplicate chemical creation: {}",
+            "Occurrence statements waiting on chemical creations: {}",
             chemical_deferred_occurrences
         );
         println!(
-            "  Only the first missing chemical per InChIKey is created per batch; rerun after that item has a QID to emit the remaining occurrences."
+            "  Chemical items must exist in Wikidata before occurrences can be emitted; rerun after the new items have QIDs."
         );
     }
     if unresolved_taxa > 0 {
@@ -315,7 +345,13 @@ rerun this tool after the reference batch finishes to emit those occurrences."
             "- After this batch finishes, rerun lotus-o3 to emit the {} deferred occurrence statement(s).",
             deferred_occurrences
         );
-    } else if quickstatements_file.is_some() {
+    }
+    if batch_blocked_occurrences > 0 {
+        println!(
+            "- Upload this batch to QuickStatements, wait for the new items to receive QIDs, then rerun lotus-o3 to generate the {} occurrence statement(s) that require those creations.",
+            batch_blocked_occurrences
+        );
+    } else if deferred_occurrences == 0 && quickstatements_file.is_some() && emit_occurrences {
         println!("- Once the QuickStatements run completes, no second pass is required.");
     }
     if let Some(report_path) = &status_report_path {
@@ -398,31 +434,58 @@ fn plan_chemical_creations(records: &[(EnrichedData, WikidataInfo)]) -> Vec<bool
         .collect()
 }
 
+fn plan_reference_creations(
+    records: &[(EnrichedData, WikidataInfo)],
+) -> (Vec<bool>, HashSet<String>) {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut plan = Vec::with_capacity(records.len());
+    for (_, info) in records.iter() {
+        let mut should_create = false;
+        if info.reference_qid.is_none() {
+            if let Some(metadata) = &info.reference_metadata {
+                let key = metadata.doi.trim().to_lowercase();
+                if seen.insert(key) {
+                    should_create = true;
+                }
+            }
+        }
+        plan.push(should_create);
+    }
+    (plan, seen)
+}
+
 fn build_record_reports(
     records: &[(EnrichedData, WikidataInfo)],
     chemical_creation_plan: &[bool],
+    reference_creation_plan: &[bool],
+    planned_reference_dois: &HashSet<String>,
+    emit_occurrences: bool,
 ) -> Vec<RecordReport> {
     records
         .iter()
-        .zip(chemical_creation_plan.iter())
-        .map(|((data, info), should_create_chemical)| {
+        .zip(
+            chemical_creation_plan
+                .iter()
+                .zip(reference_creation_plan.iter()),
+        )
+        .map(|((data, info), (should_create_chemical, should_create_reference))| {
             let create_chemical = *should_create_chemical;
-            let create_reference =
-                info.reference_qid.is_none() && info.reference_metadata.is_some();
-            let chemical_available = info.chemical_qid.is_some() || create_chemical;
-            let reference_qid_available = info.reference_qid.is_some();
-            let reference_available = reference_qid_available || create_reference;
+            let create_reference = *should_create_reference;
             let taxon_available = info.taxon_qid.is_some();
+            let reference_qid_available = info.reference_qid.is_some();
+            let reference_key = data.reference_doi.trim().to_lowercase();
+            let reference_planned =
+                reference_qid_available || planned_reference_dois.contains(&reference_key);
+            let chemical_ready_now = info.chemical_qid.is_some();
+            let dependencies_ready_now =
+                chemical_ready_now && reference_qid_available && taxon_available;
+
             let create_occurrence =
-                !info.occurrence_exists
-                    && chemical_available
-                    && reference_qid_available
-                    && taxon_available;
-            let waiting_on_reference = !info.occurrence_exists
-                && taxon_available
-                && chemical_available
-                && !reference_qid_available
-                && info.reference_metadata.is_some();
+                emit_occurrences && dependencies_ready_now && !info.occurrence_exists;
+            let occurrence_waiting_on_reference = !reference_qid_available && reference_planned;
+            let occurrence_waiting_on_chemical = !chemical_ready_now;
+            let occurrence_waiting_on_batch =
+                !emit_occurrences && dependencies_ready_now && !info.occurrence_exists;
 
             let mut issues = Vec::new();
             if info.taxon_qid.is_none() {
@@ -437,26 +500,27 @@ fn build_record_reports(
                         .to_string(),
                 );
             }
-            if waiting_on_reference {
+            if occurrence_waiting_on_reference {
                 issues.push(
                     "Occurrence deferred until the new reference item has a QID; rerun the importer after this batch finishes in QuickStatements."
                         .to_string(),
                 );
-            } else if !info.occurrence_exists
-                && !create_occurrence
-                && taxon_available
-                && !(info.chemical_qid.is_none() && !create_chemical)
-            {
-                if !reference_available {
-                    issues.push("Missing reference metadata prevents occurrence creation.".to_string());
-                } else if !chemical_available {
-                    issues.push("Missing chemical data prevents occurrence creation.".to_string());
-                }
-            } else if info.chemical_qid.is_none() && !create_chemical {
+            }
+            if occurrence_waiting_on_chemical {
                 issues.push(
-                    "Occurrence deferred until the duplicate chemical creation finishes; rerun the importer after this batch."
+                    "Occurrence deferred until the chemical item exists in Wikidata; rerun after uploading this creation batch."
                         .to_string(),
                 );
+            }
+            if occurrence_waiting_on_batch {
+                issues.push(
+                    "Occurrence deferred because this run is limited to entity creations; rerun lotus-o3 once those QIDs are live."
+                        .to_string(),
+                );
+            } else if !info.occurrence_exists && !create_occurrence && taxon_available {
+                if !reference_planned {
+                    issues.push("Missing reference metadata prevents occurrence creation.".to_string());
+                }
             }
 
             RecordReport {
@@ -474,8 +538,9 @@ fn build_record_reports(
                 create_chemical,
                 create_reference,
                 create_occurrence,
-                occurrence_waiting_on_reference: waiting_on_reference,
-                occurrence_waiting_on_chemical: info.chemical_qid.is_none() && !create_chemical,
+                occurrence_waiting_on_reference,
+                occurrence_waiting_on_chemical,
+                occurrence_waiting_on_batch,
                 issues,
             }
         })
@@ -501,6 +566,7 @@ fn write_status_report(rows: &[RecordReport], path: &Path) -> Result<()> {
         "create_occurrence",
         "occurrence_waiting_on_reference",
         "occurrence_waiting_on_chemical",
+        "occurrence_waiting_on_batch",
         "issues",
     ])?;
 
@@ -529,6 +595,7 @@ fn write_status_report(rows: &[RecordReport], path: &Path) -> Result<()> {
             bool_to_label(row.create_occurrence),
             bool_to_label(row.occurrence_waiting_on_reference),
             bool_to_label(row.occurrence_waiting_on_chemical),
+            bool_to_label(row.occurrence_waiting_on_batch),
             issues_text.as_str(),
         ])?;
     }
@@ -585,6 +652,7 @@ struct RecordReport {
     create_occurrence: bool,
     occurrence_waiting_on_reference: bool,
     occurrence_waiting_on_chemical: bool,
+    occurrence_waiting_on_batch: bool,
     issues: Vec<String>,
 }
 

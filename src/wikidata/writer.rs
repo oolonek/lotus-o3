@@ -15,17 +15,20 @@ const DALTON_QID: &str = "Q483261";
 pub fn generate_quickstatements(
     records: &[(EnrichedData, WikidataInfo)],
     chemical_creation_plan: &[bool],
+    reference_creation_plan: &[bool],
+    emit_occurrences: bool,
     writer: &mut dyn Write,
 ) -> Result<()> {
     let mut temp_qid_counter = 0;
     let mut emitted_references: HashSet<String> = HashSet::new();
 
-    for ((data, info), should_create_chemical) in records.iter().zip(chemical_creation_plan.iter())
-    {
+    for (idx, (data, info)) in records.iter().enumerate() {
+        let should_create_chemical = *chemical_creation_plan.get(idx).unwrap_or(&false);
+        let should_create_reference = *reference_creation_plan.get(idx).unwrap_or(&false);
         let mut commands = Vec::new();
         let mut current_chemical_qid = info.chemical_qid.clone();
 
-        if info.reference_qid.is_none() {
+        if should_create_reference {
             if let Some(metadata) = &info.reference_metadata {
                 let key = metadata.doi.to_lowercase();
                 if emitted_references.insert(key) {
@@ -35,7 +38,7 @@ pub fn generate_quickstatements(
         }
 
         // 1. Create Chemical Item if it doesn't exist
-        if info.chemical_qid.is_none() && *should_create_chemical {
+        if info.chemical_qid.is_none() && should_create_chemical {
             temp_qid_counter += 1;
             let temp_qid = format!("CREATE_{}", temp_qid_counter);
             commands.push("CREATE".to_string());
@@ -54,6 +57,9 @@ pub fn generate_quickstatements(
             if let Some(smiles) = &data.isomeric_smiles {
                 commands.push(format!("LAST\tP2017\t\"{}\"", smiles));
             }
+            if let Some(canonical) = &data.canonical_smiles {
+                commands.push(format!("LAST\tP233\t\"{}\"", canonical));
+            }
             if let Some(inchi) = &data.inchi {
                 commands.push(format!("LAST\tP234\t\"{}\"", inchi));
             }
@@ -69,29 +75,27 @@ pub fn generate_quickstatements(
             }
             if let Some(mass) = data.exact_mass {
                 let mass_value = format_mass_quantity(mass);
+                let unit_id = DALTON_QID.trim_start_matches('Q');
                 commands.push(format!(
-                    "LAST\tP2067\t{}\tU{}\t{}\t{}",
-                    mass_value, DALTON_QID, HEURISTIC_REFERENCE_PROPERTY, HEURISTIC_QID
+                    "LAST\tP2067\t{}U{}\t{}\t{}",
+                    mass_value, unit_id, HEURISTIC_REFERENCE_PROPERTY, HEURISTIC_QID
                 ));
             }
 
-            // Add occurrence statement with temporary ID when taxon and reference exist
-            if let (Some(taxon_qid), Some(reference_qid)) = (&info.taxon_qid, &info.reference_qid) {
-                commands.push(format!(
-                    "LAST\tP703\t{}\tS248\t{}",
-                    taxon_qid, reference_qid
-                ));
+            if info.taxon_qid.is_some() && info.reference_qid.is_some() {
+                warn!(
+                    "Occurrence for {} will be deferred until the new item receives a QID",
+                    data.chemical_entity_name
+                );
+                // Intentionally skip emitting a P703 statement here; occurrences will be added once the
+                // new chemical item exists with a stable QID.
             } else {
                 warn!(
                     "Skipping initial occurrence for {} because taxon/reference data are missing",
                     data.chemical_entity_name
                 );
             }
-
-            // TODO: Add P2067 (mass) calculation and statement with qualifiers P887=Q113907573
-            // Requires a cheminformatics library capable of calculating mass from SMILES/formula.
-            // Skipping for simplicity for now.
-        } else if info.chemical_qid.is_none() && !*should_create_chemical {
+        } else if info.chemical_qid.is_none() && !should_create_chemical {
             warn!(
                 "Skipping duplicate chemical creation for InChIKey {}",
                 data.inchikey.as_deref().unwrap_or("unknown")
@@ -99,7 +103,7 @@ pub fn generate_quickstatements(
         }
 
         // 2. Add Occurrence Statement if it doesn't exist and all QIDs are present
-        if !info.occurrence_exists && info.chemical_qid.is_some() {
+        if emit_occurrences && !info.occurrence_exists && info.chemical_qid.is_some() {
             match (&current_chemical_qid, &info.taxon_qid, &info.reference_qid) {
                 (Some(chem_qid), Some(tax_qid), Some(ref_qid)) => {
                     commands.push(format!(
@@ -192,11 +196,12 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_qs_create_item_and_occurrence() {
+    fn test_generate_qs_create_item_only() {
         let records = vec![create_test_data(None, Some("Q2"), Some("Q3"), false)];
         let plan = vec![true];
+        let ref_plan = vec![false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &ref_plan, false, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         let lines: Vec<&str> = output.trim().split('\n').collect();
@@ -209,30 +214,33 @@ mod tests {
         assert!(lines.contains(&r#"LAST	P31	Q113145171"#));
         assert!(lines.contains(&r#"LAST	P234	"InChI=1S/CH4/h1H4""#)); // InChI
         assert!(lines.contains(&r#"LAST	P235	"VNWKTOKETHGBQD-UHFFFAOYSA-N""#)); // InChIKey
+        assert!(lines.contains(&r#"LAST	P233	"C""#)); // Canonical SMILES
         let expected_formula = format!(
             r#"LAST	P274	"CH₄"	{}	{}"#,
             HEURISTIC_REFERENCE_PROPERTY, HEURISTIC_QID
         );
         assert!(lines.iter().any(|line| *line == expected_formula)); // Formula w/ reference
         let mass_suffix = format!(
-            "\tU{}\t{}\t{}",
-            DALTON_QID, HEURISTIC_REFERENCE_PROPERTY, HEURISTIC_QID
+            "U{}\t{}\t{}",
+            DALTON_QID.trim_start_matches('Q'),
+            HEURISTIC_REFERENCE_PROPERTY,
+            HEURISTIC_QID
         );
         assert!(
             lines
                 .iter()
-                .any(|line| line.starts_with("LAST\tP2067\t+") && line.contains(&mass_suffix))
+                .any(|line| line.starts_with("LAST\tP2067\t") && line.contains(&mass_suffix))
         ); // Mass
-        // Check occurrence statement using the temporary ID
-        assert!(lines.contains(&r#"LAST	P703	Q2	S248	Q3"#));
+        assert!(!lines.iter().any(|line| line.contains("\tP703\t")));
     }
 
     #[test]
     fn test_generate_qs_add_occurrence_only() {
         let records = vec![create_test_data(Some("Q1"), Some("Q2"), Some("Q3"), false)];
         let plan = vec![false];
+        let ref_plan = vec![false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &ref_plan, true, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         let lines: Vec<&str> = output.trim().split('\n').collect();
@@ -245,8 +253,9 @@ mod tests {
     fn test_generate_qs_skip_existing_occurrence() {
         let records = vec![create_test_data(Some("Q1"), Some("Q2"), Some("Q3"), true)];
         let plan = vec![false];
+        let ref_plan = vec![false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &ref_plan, true, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         assert!(output.trim().is_empty());
@@ -257,8 +266,9 @@ mod tests {
         // Chemical exists, Taxon doesn't, Ref exists, Occurrence doesn't
         let records = vec![create_test_data(Some("Q1"), None, Some("Q3"), false)];
         let plan = vec![false];
+        let ref_plan = vec![false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &ref_plan, true, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         // No occurrence command should be generated
@@ -273,17 +283,16 @@ mod tests {
             create_test_data(Some("Q7"), Some("Q8"), Some("Q9"), true), // Skip Occ3
         ];
         let plan = vec![true, false, false];
+        let ref_plan = vec![false, false, false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &ref_plan, true, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         let lines: Vec<&str> = output.trim().split('\n').collect();
         println!("Generated QuickStatements:\n{}", output);
 
-        // Check commands for first record (creation + occurrence)
         assert!(lines.contains(&"CREATE"));
         assert!(lines.contains(&r#"LAST	Len	"TestChem""#));
-        assert!(lines.contains(&r#"LAST	P703	Q2	S248	Q3"#));
         // Check command for second record (occurrence only)
         assert!(lines.contains(&r#"Q4	P703	Q5	S248	Q6"#));
         // Check that nothing was generated for the third record
@@ -320,7 +329,8 @@ mod tests {
         let records = vec![enriched];
         let mut buffer = Cursor::new(Vec::new());
         let plan = vec![false];
-        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
+        let ref_plan = vec![true];
+        generate_quickstatements(&records, &plan, &ref_plan, false, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         assert!(output.contains("P356"));
@@ -452,7 +462,7 @@ fn format_mass_quantity(value: f64) -> String {
     } else {
         s.push_str(".0");
     }
-    format!("+{}", s)
+    s
 }
 
 // helper removed: QuickStatements cannot reuse placeholders like LAST-1, so
