@@ -9,22 +9,34 @@ See the [LOTUS Project](https://www.wikidata.org/wiki/Wikidata:WikiProject_Chemi
 
 ## Features
 
-*   **CSV Loading & Validation:** Loads data from a CSV file and validates the required columns. If your headers differ, use `--column-chemical-name`, `--column-structure`, `--column-taxon`, or `--column-doi` to remap them. Missing-column errors now list all required headers and the CLI overrides.
+*   **CSV Loading & Validation:** Loads data from a CSV file and validates the required columns. If your headers differ, use `--column-chemical-name`, `--column-structure`, `--column-taxon`, or `--column-doi` to remap them.
+
 *   **Chemical Data Enrichment:** Uses the public Chemoinformatics API (`https://api.naturalproducts.net`) to enrich the input SMILES with:
     *   Canonical SMILES
     *   Isomeric SMILES
     *   InChI
     *   InChIKey
     *   Molecular Formula
+    *   Exact Mass
+
+*  **Reference Metadata Fetching:** Uses the Crossref API to fetch metadata for the provided DOIs, including:
+    *   Title
+    *   Authors
+    *   Publication Year
+    *   Volume
+    *   Issue
+
 *   **Wikidata Checks:** Queries the Wikidata SPARQL endpoint to check if:
     *   The chemical entity already exists (using InChIKey).
     *   The taxon already exists (using its name).
     *   The reference publication already exists (using its DOI).
     *   The specific occurrence (chemical found in taxon, stated in reference) already exists.
+
 *   **QuickStatements Generation:** Generates a file compatible with Wikidata's QuickStatements V1 tool. This file includes commands to:
     *   Create new chemical items if they don't exist (as 'type of chemical entity' - Q113145171), including properties like SMILES, InChI, InChIKey, formula, label, and description.
     *   Add 'found in taxon' (P703) statements to chemical items, referencing the publication (using 'stated in' - S248).
     *   Create missing reference items from Crossref metadata (including volume, issue, monolingual title, authors).
+
 *   **User Guidance:** Each run emits a per-record TSV status report, a ready-to-run QuickStatements link saved in `<output_stem>_qs_url.txt`, and a “Next actions” block explaining whether a second QS run is required.
 *   **Caching:** Crossref lookups and reference DOIs are cached per run, so repeated DOIs are fetched only once.
 *   **Logging & Summary:** Verbose logs plus a summary report detailing successes, manual-review counts, deferred occurrences, and unresolved taxa.
@@ -120,3 +132,10 @@ After `cargo install --path .`, Cargo places the binary in `~/.cargo/bin`, so ru
 *   Add more detailed logging levels and configuration.
 *   Implement mocking for API and SPARQL endpoints for more reliable testing.
 *   Provide more detailed summary statistics.
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.
+
+## Contributing
+
+Contributions are welcome! Please fork the repository and submit a pull request with your changes. Feel free to open issues for bug reports or feature requests.
