@@ -78,7 +78,7 @@ This Rust crate provides a command-line tool to process CSV files containing che
     *   Review the commands and click "Run".
 
     Each run also emits:
-    *   `output_status.tsv` — a per-record TSV summarizing which chemicals/references/occurrences will be created.
+    *   `output_status.tsv` — a per-record TSV summarizing which chemicals/references/occurrences will be created, plus the original SMILES, sanitized SMILES, canonical/isomeric SMILES (when available), and whether sanitization modified the structure.
     *   `<output_stem>_qs_url.txt` — the ready-to-run QuickStatements link for the batch.
     *   A console “Next actions” block telling you whether a follow-up run is required (e.g., after reference items finish creating).
 
@@ -87,6 +87,7 @@ This Rust crate provides a command-line tool to process CSV files containing che
 *   **Dependencies:** Uses `csv`, `serde`, `reqwest`, `tokio`, `clap`, `log`, `env_logger`, `thiserror`, `serde_json`, `once_cell`, `indicatif`.
 *   **API Interaction:** Interacts with `api.naturalproducts.net` for enrichment and `query.wikidata.org` for checks.
 *   **Wikidata Edits:** Currently only supports generating QuickStatements. Direct editing via the API is not implemented due to authentication complexities.
+*   **Chemical statements:** Newly created chemical items now include molecular formulae (P274) with Unicode subscripts and exact masses (P2067, in dalton) derived from the sanitized SMILES, each cited with the heuristic reference (S887 → Q113907573).
 *   **Error Handling:** Aims to be robust by logging errors and continuing processing.
 *   **Testing:** Includes unit tests for CSV parsing, CLI parsing, enrichment, and QuickStatements generation. Integration tests hitting live APIs/Wikidata are marked `#[ignore]` and should be run cautiously (`cargo test`).
 *   **Documentation:** To build and browse the API docs (with module-level descriptions added), run `cargo doc --open`.
@@ -108,7 +109,6 @@ After `cargo install --path .`, Cargo places the binary in `~/.cargo/bin`, so ru
 ## Future Improvements
 
 *   Implement direct Wikidata editing with proper authentication.
-*   Add calculation for mass (P2067) using a Rust cheminformatics library.
 *   Improve taxon name matching (handle ambiguity, case-insensitivity).
 *   Add more detailed logging levels and configuration.
 *   Implement mocking for API and SPARQL endpoints for more reliable testing.

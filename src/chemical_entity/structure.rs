@@ -22,12 +22,13 @@ static ISOMERIC_SMILES_REGEX: Lazy<Regex> = Lazy::new(|| {
 #[derive(Debug, Clone)]
 pub struct ChemicalStructureData {
     pub sanitized_smiles: String,
-    pub sanitized_differs: bool,
+    pub smiles_were_sanitized: bool,
     pub canonical_smiles: Option<String>,
     pub isomeric_smiles: Option<String>,
     pub inchi: Option<String>,
     pub inchikey: Option<String>,
     pub molecular_formula: Option<String>,
+    pub exact_mass: Option<f64>,
     pub other_descriptors: Option<HashMap<String, Value>>,
 }
 
@@ -75,7 +76,7 @@ pub async fn enrich_structure(
             reason: "Sanitization service returned no SMILES".to_string(),
         })?;
     let sanitized_smiles = standardized_smiles.clone();
-    let sanitized_differs = sanitized_smiles != smiles;
+    let smiles_were_sanitized = sanitized_smiles != smiles;
 
     if sanitized_smiles.is_empty() {
         return Err(CrateError::SmilesSanitizationFailed {
@@ -119,26 +120,45 @@ pub async fn enrich_structure(
         });
     }
 
-    let molecular_formula = response
-        .standardized
-        .descriptors
+    let descriptor_data = fetch_descriptors(&sanitized_smiles, client).await?;
+
+    let molecular_formula = descriptor_data
         .as_ref()
-        .and_then(|map| map.get("molecular_formula"))
-        .and_then(|value| value.as_str())
-        .map(|s| s.to_string());
-    let other_descriptors = response.standardized.descriptors.clone();
+        .and_then(|desc| desc.molecular_formula.clone())
+        .or_else(|| {
+            response
+                .standardized
+                .descriptors
+                .as_ref()
+                .and_then(|map| map.get("molecular_formula"))
+                .and_then(|value| value.as_str())
+                .map(|s| s.to_string())
+        });
+    let exact_mass = descriptor_data
+        .as_ref()
+        .and_then(|desc| desc.exact_molecular_weight)
+        .or_else(|| {
+            response
+                .standardized
+                .descriptors
+                .as_ref()
+                .and_then(|map| map.get("exact_molecular_weight"))
+                .and_then(|value| value.as_f64())
+        });
+    let other_descriptors = descriptor_data.map(|desc| desc.other);
 
     let (canonical_smiles, isomeric_smiles) =
         validate_smiles_pair(canonical_smiles, isomeric_smiles)?;
 
     Ok(ChemicalStructureData {
         sanitized_smiles,
-        sanitized_differs,
+        smiles_were_sanitized,
         canonical_smiles,
         isomeric_smiles,
         inchi,
         inchikey,
         molecular_formula,
+        exact_mass,
         other_descriptors,
     })
 }
@@ -203,4 +223,46 @@ async fn fetch_preprocessing(
         .json::<PreprocessingResponse>()
         .await
         .map_err(CrateError::ApiJsonDecodeError)
+}
+
+#[derive(Debug, Deserialize)]
+struct DescriptorsResponse {
+    molecular_formula: Option<String>,
+    exact_molecular_weight: Option<f64>,
+    #[serde(flatten)]
+    other: HashMap<String, Value>,
+}
+
+async fn fetch_descriptors(
+    smiles: &str,
+    client: &reqwest::Client,
+) -> Result<Option<DescriptorsResponse>> {
+    let url = format!("{}/chem/descriptors", API_BASE_URL);
+
+    let response = client
+        .get(&url)
+        .query(&[("smiles", smiles)])
+        .send()
+        .await
+        .map_err(CrateError::ApiRequestError)?;
+
+    if !response.status().is_success() {
+        warn!(
+            "API call to /chem/descriptors failed for SMILES {}: Status {}",
+            smiles,
+            response.status()
+        );
+        return Ok(None);
+    }
+
+    match response.json::<DescriptorsResponse>().await {
+        Ok(data) => Ok(Some(data)),
+        Err(err) => {
+            warn!(
+                "Failed to decode JSON response from /chem/descriptors for SMILES {}: {}",
+                smiles, err
+            );
+            Err(CrateError::ApiJsonDecodeError(err))
+        }
+    }
 }

@@ -361,6 +361,7 @@ mod tests {
             inchi: Some("InChI=1S/CH4/h1H4".to_string()), // Example InChI for Methane
             inchikey: Some("VNWKTOKETHGBQD-UHFFFAOYSA-N".to_string()), // Methane InChIKey
             molecular_formula: Some("CH4".to_string()),
+            exact_mass: Some(16.0),
             other_descriptors: None,
         }
     }

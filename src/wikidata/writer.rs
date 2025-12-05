@@ -7,15 +7,21 @@ use log::warn;
 use std::collections::HashSet;
 use std::io::Write;
 
+const HEURISTIC_QID: &str = "Q113907573";
+const HEURISTIC_REFERENCE_PROPERTY: &str = "S887";
+const DALTON_QID: &str = "Q483261";
+
 /// Generates QuickStatements commands for the provided records.
 pub fn generate_quickstatements(
     records: &[(EnrichedData, WikidataInfo)],
+    chemical_creation_plan: &[bool],
     writer: &mut dyn Write,
 ) -> Result<()> {
     let mut temp_qid_counter = 0;
     let mut emitted_references: HashSet<String> = HashSet::new();
 
-    for (data, info) in records {
+    for ((data, info), should_create_chemical) in records.iter().zip(chemical_creation_plan.iter())
+    {
         let mut commands = Vec::new();
         let mut current_chemical_qid = info.chemical_qid.clone();
 
@@ -29,7 +35,7 @@ pub fn generate_quickstatements(
         }
 
         // 1. Create Chemical Item if it doesn't exist
-        if info.chemical_qid.is_none() {
+        if info.chemical_qid.is_none() && *should_create_chemical {
             temp_qid_counter += 1;
             let temp_qid = format!("CREATE_{}", temp_qid_counter);
             commands.push("CREATE".to_string());
@@ -55,7 +61,18 @@ pub fn generate_quickstatements(
                 commands.push(format!("LAST\tP235\t\"{}\"", inchikey));
             }
             if let Some(formula) = &data.molecular_formula {
-                commands.push(format!("LAST\tP274\t\"{}\"", formula));
+                let formatted = format_molecular_formula(formula);
+                commands.push(format!(
+                    "LAST\tP274\t\"{}\"\t{}\t{}",
+                    formatted, HEURISTIC_REFERENCE_PROPERTY, HEURISTIC_QID
+                ));
+            }
+            if let Some(mass) = data.exact_mass {
+                let mass_value = format_mass_quantity(mass);
+                commands.push(format!(
+                    "LAST\tP2067\t{}\tU{}\t{}\t{}",
+                    mass_value, DALTON_QID, HEURISTIC_REFERENCE_PROPERTY, HEURISTIC_QID
+                ));
             }
 
             // Add occurrence statement with temporary ID when taxon and reference exist
@@ -74,6 +91,11 @@ pub fn generate_quickstatements(
             // TODO: Add P2067 (mass) calculation and statement with qualifiers P887=Q113907573
             // Requires a cheminformatics library capable of calculating mass from SMILES/formula.
             // Skipping for simplicity for now.
+        } else if info.chemical_qid.is_none() && !*should_create_chemical {
+            warn!(
+                "Skipping duplicate chemical creation for InChIKey {}",
+                data.inchikey.as_deref().unwrap_or("unknown")
+            );
         }
 
         // 2. Add Occurrence Statement if it doesn't exist and all QIDs are present
@@ -156,6 +178,7 @@ mod tests {
                 inchi: Some("InChI=1S/CH4/h1H4".to_string()),
                 inchikey: Some("VNWKTOKETHGBQD-UHFFFAOYSA-N".to_string()),
                 molecular_formula: Some("CH4".to_string()),
+                exact_mass: Some(16.0),
                 other_descriptors: None,
             },
             WikidataInfo {
@@ -171,8 +194,9 @@ mod tests {
     #[test]
     fn test_generate_qs_create_item_and_occurrence() {
         let records = vec![create_test_data(None, Some("Q2"), Some("Q3"), false)];
+        let plan = vec![true];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         let lines: Vec<&str> = output.trim().split('\n').collect();
@@ -185,7 +209,20 @@ mod tests {
         assert!(lines.contains(&r#"LAST	P31	Q113145171"#));
         assert!(lines.contains(&r#"LAST	P234	"InChI=1S/CH4/h1H4""#)); // InChI
         assert!(lines.contains(&r#"LAST	P235	"VNWKTOKETHGBQD-UHFFFAOYSA-N""#)); // InChIKey
-        assert!(lines.contains(&r#"LAST	P274	"CH4""#)); // Formula
+        let expected_formula = format!(
+            r#"LAST	P274	"CH₄"	{}	{}"#,
+            HEURISTIC_REFERENCE_PROPERTY, HEURISTIC_QID
+        );
+        assert!(lines.iter().any(|line| *line == expected_formula)); // Formula w/ reference
+        let mass_suffix = format!(
+            "\tU{}\t{}\t{}",
+            DALTON_QID, HEURISTIC_REFERENCE_PROPERTY, HEURISTIC_QID
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("LAST\tP2067\t+") && line.contains(&mass_suffix))
+        ); // Mass
         // Check occurrence statement using the temporary ID
         assert!(lines.contains(&r#"LAST	P703	Q2	S248	Q3"#));
     }
@@ -193,8 +230,9 @@ mod tests {
     #[test]
     fn test_generate_qs_add_occurrence_only() {
         let records = vec![create_test_data(Some("Q1"), Some("Q2"), Some("Q3"), false)];
+        let plan = vec![false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         let lines: Vec<&str> = output.trim().split('\n').collect();
@@ -206,8 +244,9 @@ mod tests {
     #[test]
     fn test_generate_qs_skip_existing_occurrence() {
         let records = vec![create_test_data(Some("Q1"), Some("Q2"), Some("Q3"), true)];
+        let plan = vec![false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         assert!(output.trim().is_empty());
@@ -217,8 +256,9 @@ mod tests {
     fn test_generate_qs_skip_missing_taxon_qid() {
         // Chemical exists, Taxon doesn't, Ref exists, Occurrence doesn't
         let records = vec![create_test_data(Some("Q1"), None, Some("Q3"), false)];
+        let plan = vec![false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         // No occurrence command should be generated
@@ -232,8 +272,9 @@ mod tests {
             create_test_data(Some("Q4"), Some("Q5"), Some("Q6"), false), // Add Occ2
             create_test_data(Some("Q7"), Some("Q8"), Some("Q9"), true), // Skip Occ3
         ];
+        let plan = vec![true, false, false];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &mut buffer).unwrap();
+        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         let lines: Vec<&str> = output.trim().split('\n').collect();
@@ -278,7 +319,8 @@ mod tests {
 
         let records = vec![enriched];
         let mut buffer = Cursor::new(Vec::new());
-        generate_quickstatements(&records, &mut buffer).unwrap();
+        let plan = vec![false];
+        generate_quickstatements(&records, &plan, &mut buffer).unwrap();
 
         let output = String::from_utf8(buffer.into_inner()).unwrap();
         assert!(output.contains("P356"));
@@ -375,6 +417,42 @@ fn escape_literal(value: &str) -> String {
         .replace('\n', " ")
         .trim()
         .to_string()
+}
+
+fn format_molecular_formula(formula: &str) -> String {
+    formula
+        .chars()
+        .map(|ch| match ch {
+            '0' => '₀',
+            '1' => '₁',
+            '2' => '₂',
+            '3' => '₃',
+            '4' => '₄',
+            '5' => '₅',
+            '6' => '₆',
+            '7' => '₇',
+            '8' => '₈',
+            '9' => '₉',
+            _ => ch,
+        })
+        .collect()
+}
+
+fn format_mass_quantity(value: f64) -> String {
+    let mut s = format!("{value:.9}");
+    if let Some(dot_pos) = s.find('.') {
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.push('0');
+        } else if s.len() == dot_pos {
+            s.push_str(".0");
+        }
+    } else {
+        s.push_str(".0");
+    }
+    format!("+{}", s)
 }
 
 // helper removed: QuickStatements cannot reuse placeholders like LAST-1, so

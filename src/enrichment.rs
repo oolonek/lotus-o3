@@ -1,7 +1,7 @@
 //! Chemoinformatics enrichment utilities.
 use crate::chemical_entity::structure::{ChemicalStructureData, enrich_structure};
 use crate::csv_handler::InputRecord;
-use crate::error::{CrateError, Result};
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ pub struct EnrichedData {
     pub inchi: Option<String>,
     pub inchikey: Option<String>,
     pub molecular_formula: Option<String>,
+    pub exact_mass: Option<f64>,
     pub other_descriptors: Option<HashMap<String, Value>>,
 }
 
@@ -28,12 +29,13 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
     let structure = enrich_structure(&record.chemical_entity_smiles, client).await?;
     let ChemicalStructureData {
         sanitized_smiles,
-        sanitized_differs,
+        smiles_were_sanitized,
         canonical_smiles,
         isomeric_smiles,
         inchi,
         inchikey,
         molecular_formula,
+        exact_mass,
         other_descriptors,
     } = structure;
 
@@ -41,7 +43,7 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
         chemical_entity_name: record.chemical_entity_name,
         input_smiles: record.chemical_entity_smiles,
         sanitized_smiles,
-        smiles_were_sanitized: sanitized_differs,
+        smiles_were_sanitized,
         taxon_name: record.taxon_name,
         reference_doi: record.reference_doi,
         canonical_smiles,
@@ -49,6 +51,7 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
         inchi,
         inchikey,
         molecular_formula,
+        exact_mass,
         other_descriptors,
     })
 }
@@ -56,6 +59,7 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::CrateError;
     use tokio;
 
     #[tokio::test]
