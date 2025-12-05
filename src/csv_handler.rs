@@ -1,5 +1,6 @@
 //! Helpers for loading and validating occurrence CSV files.
 use crate::error::{CrateError, Result};
+use crate::taxon::normalizer::normalize_taxon_name;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
@@ -87,15 +88,6 @@ const COLUMN_REQUIREMENTS: [ColumnRequirement; 4] = [
         description: "Reference DOI backing the occurrence",
     },
 ];
-
-/// Normalizes verbose taxon labels (e.g., truncating authorship info).
-fn normalize_taxon_name(taxon_name: &str) -> String {
-    taxon_name
-        .split_whitespace()
-        .take(2)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
 
 static DOI_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^(10\.[0-9]{4,}(?:\.[0-9]+)*/[^"'&\s]+)$"#).expect("valid DOI regex")
@@ -281,19 +273,6 @@ mod tests {
         let file = create_test_csv(content);
         let result = load_and_validate_csv(file.path(), &ColumnConfig::default());
         assert!(matches!(result, Err(CrateError::CsvError(_))));
-    }
-
-    #[test]
-    fn test_normalize_taxon_name() {
-        assert_eq!(
-            normalize_taxon_name("Vernonanthura patens (Kunth) H.Rob."),
-            "Vernonanthura patens"
-        );
-        assert_eq!(normalize_taxon_name("Single"), "Single");
-        assert_eq!(
-            normalize_taxon_name("  Leading  and trailing  "),
-            "Leading and"
-        );
     }
 
     #[test]

@@ -1,9 +1,11 @@
 //! lotus-o3 CLI entry point orchestrating CSV parsing and Wikidata preparation.
+pub mod chemical_entity;
 pub mod cli;
 pub mod csv_handler;
 pub mod enrichment;
 pub mod error;
 pub mod reference;
+pub mod taxon;
 pub mod wikidata;
 
 use clap::Parser;
