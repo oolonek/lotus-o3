@@ -95,6 +95,25 @@ fn normalize_taxon_name(taxon_name: &str) -> String {
         .join(" ")
 }
 
+fn normalize_doi(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let lowered = trimmed.to_lowercase();
+    const PREFIXES: [&str; 5] = [
+        "https://doi.org/",
+        "http://doi.org/",
+        "https://dx.doi.org/",
+        "http://dx.doi.org/",
+        "doi:",
+    ];
+    for prefix in PREFIXES {
+        if lowered.starts_with(prefix) {
+            let suffix = trimmed[prefix.len()..].trim_start_matches('/');
+            return suffix.trim().to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
 /// Loads and validates the input CSV file, applying the provided column mapping.
 pub fn load_and_validate_csv(file_path: &Path, columns: &ColumnConfig) -> Result<Vec<InputRecord>> {
     let mut reader = csv::Reader::from_path(file_path)?;
@@ -120,7 +139,7 @@ pub fn load_and_validate_csv(file_path: &Path, columns: &ColumnConfig) -> Result
             chemical_entity_name: record.get(chemical_idx).unwrap_or("").trim().to_string(),
             chemical_entity_smiles: record.get(structure_idx).unwrap_or("").trim().to_string(),
             taxon_name: record.get(taxon_idx).unwrap_or("").trim().to_string(),
-            reference_doi: record.get(doi_idx).unwrap_or("").trim().to_string(),
+            reference_doi: record.get(doi_idx).unwrap_or("").to_string(),
         };
 
         if normalized.chemical_entity_name.is_empty() {
@@ -149,6 +168,7 @@ pub fn load_and_validate_csv(file_path: &Path, columns: &ColumnConfig) -> Result
         }
 
         normalized.taxon_name = normalize_taxon_name(&normalized.taxon_name);
+        normalized.reference_doi = normalize_doi(&normalized.reference_doi);
         valid_records.push(normalized);
     }
 
@@ -272,6 +292,19 @@ mod tests {
         assert_eq!(records[0].chemical_entity_smiles, "C1=CC=CC=C1");
         assert_eq!(records[0].taxon_name, "TaxonX extra");
         assert_eq!(records[0].reference_doi, "10.5772/28961");
+    }
+
+    #[test]
+    fn test_normalize_doi_prefixes() {
+        let content = "chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi\nCompoundA,C1=CC=CC=C1,TaxonX,https://doi.org/10.1016/j.bse.2007.09.008";
+        let file = create_test_csv(content);
+        let records = load_and_validate_csv(file.path(), &ColumnConfig::default()).unwrap();
+        assert_eq!(records[0].reference_doi, "10.1016/j.bse.2007.09.008");
+
+        let content2 = "chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi\nCompoundB,C,TaxonY,DOI:10.5772/28961";
+        let file2 = create_test_csv(content2);
+        let records2 = load_and_validate_csv(file2.path(), &ColumnConfig::default()).unwrap();
+        assert_eq!(records2[0].reference_doi, "10.5772/28961");
     }
 
     #[test]
