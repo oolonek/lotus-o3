@@ -8,7 +8,7 @@ pub mod wikidata;
 use clap::Parser;
 use cli::{Cli, OutputMode};
 use csv::WriterBuilder;
-use csv_handler::load_and_validate_csv;
+use csv_handler::{ColumnConfig, load_and_validate_csv};
 use enrichment::{EnrichedData, enrich_record};
 use error::{CrateError, Result};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -46,7 +46,14 @@ async fn main() -> Result<()> {
 
     // 1. Load and Validate CSV
     info!("Loading and validating CSV...");
-    let input_records = match load_and_validate_csv(&cli.input_file) {
+    let column_config = ColumnConfig {
+        chemical_name: cli.column_chemical_name.clone(),
+        structure: cli.column_structure.clone(),
+        taxon: cli.column_taxon.clone(),
+        doi: cli.column_doi.clone(),
+    };
+
+    let input_records = match load_and_validate_csv(&cli.input_file, &column_config) {
         Ok(records) => {
             info!(
                 "Successfully loaded and validated {} records.",

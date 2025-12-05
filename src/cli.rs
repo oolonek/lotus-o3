@@ -8,6 +8,42 @@ pub struct Cli {
     #[arg(short, long, value_name = "FILE")]
     pub input_file: PathBuf,
 
+    /// CSV column for the chemical entity name.
+    #[arg(
+        long = "column-chemical-name",
+        value_name = "COLUMN",
+        default_value = "chemical_entity_name",
+        help = "Header name for chemical names; override if your CSV uses a different label."
+    )]
+    pub column_chemical_name: String,
+
+    /// CSV column for the chemical structure/SMILES.
+    #[arg(
+        long = "column-structure",
+        value_name = "COLUMN",
+        default_value = "chemical_entity_smiles",
+        help = "Header name for the chemical structure (SMILES)."
+    )]
+    pub column_structure: String,
+
+    /// CSV column for the taxon.
+    #[arg(
+        long = "column-taxon",
+        value_name = "COLUMN",
+        default_value = "taxon_name",
+        help = "Header name for the taxon."
+    )]
+    pub column_taxon: String,
+
+    /// CSV column for the reference DOI.
+    #[arg(
+        long = "column-doi",
+        value_name = "COLUMN",
+        default_value = "reference_doi",
+        help = "Header name for the reference DOI."
+    )]
+    pub column_doi: String,
+
     /// Output mode: generate QuickStatements or attempt direct push (not implemented).
     #[arg(short, long, value_enum, default_value = "qs")]
     pub mode: OutputMode,
