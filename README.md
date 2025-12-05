@@ -43,9 +43,11 @@ See the [LOTUS Project](https://www.wikidata.org/wiki/Wikidata:WikiProject_Chemi
 
 ## Usage
 
-1.  **Build the Crate:**
+1.  **Git clone and build the Crate:**
     ```bash
-    # Ensure Rust and Cargo are installed (https://rustup.rs/)
+    git clone https://github.com/oolonek/lotus-o3.git
+    cd lotus-o3
+    # Ensure Rust and Cargo are installed (else have a look at https://rustup.rs/)
     cargo build --release
     ```
     The executable will be located at `./target/release/lotus-o3`.
@@ -116,7 +118,7 @@ See the [LOTUS Project](https://www.wikidata.org/wiki/Wikidata:WikiProject_Chemi
 `lotus-o3` is not on crates.io yet. To have `lotus-o3` on your PATH:
 
 ```bash
-git clone https://github.com/<your-org>/lotus-o3.git
+git clone https://github.com/oolonek/lotus-o3.git
 cd lotus-o3
 cargo install --path .
 # or link the release build manually:
