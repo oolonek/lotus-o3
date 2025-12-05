@@ -77,6 +77,8 @@ This Rust crate provides a command-line tool to process CSV files containing che
     *   Click "Import V1 commands".
     *   Review the commands and click "Run".
 
+    **Important:** LOTUS-O3 intentionally splits the workflow into multiple QS rounds when needed. The first round creates any missing chemical or reference items. Only after those items receive permanent QIDs (typically a couple of minutes after the batch finishes) can LOTUS-O3 emit the corresponding occurrence statements. The CLI summary tells you whether a follow-up round is required; if it is, wait for the new items to appear on Wikidata, then rerun `lotus-o3` to generate a second QS batch that cites those fresh QIDs.
+
     Each run also emits:
     *   `output_status.tsv` — a per-record TSV summarizing which chemicals/references/occurrences will be created, plus the original SMILES, sanitized SMILES, canonical/isomeric SMILES (when available), and whether sanitization modified the structure.
     *   `<output_stem>_qs_url.txt` — the ready-to-run QuickStatements link for the batch.
