@@ -71,10 +71,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic] // Expect panic because output_file is required for qs mode
     fn test_cli_qs_mode_missing_output() {
         let args = vec!["lotus-o3", "-i", "input.csv", "-m", "qs"];
-        Cli::parse_from(args);
+        let result = Cli::try_parse_from(args);
+        assert!(result.is_err());
     }
 }
-

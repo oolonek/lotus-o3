@@ -19,6 +19,14 @@ const REQUIRED_HEADERS: [&str; 4] = [
     "reference_doi",
 ];
 
+fn normalize_taxon_name(taxon_name: &str) -> String {
+    taxon_name
+        .split_whitespace()
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 // Loads and validates the input CSV file.
 pub fn load_and_validate_csv(file_path: &Path) -> Result<Vec<InputRecord>> {
     let mut reader = csv::Reader::from_path(file_path)?;
@@ -33,7 +41,7 @@ pub fn load_and_validate_csv(file_path: &Path) -> Result<Vec<InputRecord>> {
 
     let mut valid_records = Vec::new();
     for (i, result) in reader.deserialize().enumerate() {
-        let record: InputRecord = result?;
+        let mut record: InputRecord = result?;
         let row_num = i + 2; // +1 for header, +1 for 0-based index
 
         // 2. Validate Required Values are not empty
@@ -62,6 +70,10 @@ pub fn load_and_validate_csv(file_path: &Path) -> Result<Vec<InputRecord>> {
             });
         }
 
+        record.chemical_entity_name = record.chemical_entity_name.trim().to_string();
+        record.chemical_entity_smiles = record.chemical_entity_smiles.trim().to_string();
+        record.taxon_name = normalize_taxon_name(record.taxon_name.trim());
+        record.reference_doi = record.reference_doi.trim().to_string();
         valid_records.push(record);
     }
 
@@ -83,11 +95,13 @@ mod tests {
 
     #[test]
     fn test_load_valid_csv() {
-        let content = "chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi\nCompoundA,C1=CC=CC=C1,TaxonX,10.1000/test1\nCompoundB,C,TaxonY,10.1000/test2";
+        let content = "chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi\nCompoundA,C1=CC=CC=C1,TaxonX species extra , 10.1000/test1 \nCompoundB,C,TaxonY,10.1000/test2";
         let file = create_test_csv(content);
         let records = load_and_validate_csv(file.path()).unwrap();
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].chemical_entity_name, "CompoundA");
+        assert_eq!(records[0].taxon_name, "TaxonX species");
+        assert_eq!(records[0].reference_doi, "10.1000/test1");
         assert_eq!(records[1].taxon_name, "TaxonY");
     }
 
@@ -122,5 +136,25 @@ mod tests {
         let result = load_and_validate_csv(file.path());
         assert!(matches!(result, Err(CrateError::CsvError(_))));
     }
-}
 
+    #[test]
+    fn test_normalize_taxon_name() {
+        assert_eq!(
+            normalize_taxon_name("Vernonanthura patens (Kunth) H.Rob."),
+            "Vernonanthura patens"
+        );
+        assert_eq!(normalize_taxon_name("Single"), "Single");
+        assert_eq!(normalize_taxon_name("  Leading  and trailing  "), "Leading and");
+    }
+
+    #[test]
+    fn test_trim_fields() {
+        let content = "chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi\n CompoundA , C1=CC=CC=C1 , TaxonX extra info , 10.5772/28961 \r";
+        let file = create_test_csv(content);
+        let records = load_and_validate_csv(file.path()).unwrap();
+        assert_eq!(records[0].chemical_entity_name, "CompoundA");
+        assert_eq!(records[0].chemical_entity_smiles, "C1=CC=CC=C1");
+        assert_eq!(records[0].taxon_name, "TaxonX extra");
+        assert_eq!(records[0].reference_doi, "10.5772/28961");
+    }
+}

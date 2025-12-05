@@ -1,7 +1,11 @@
 use crate::enrichment::EnrichedData;
 use crate::error::{CrateError, Result};
+use crate::reference::{fetch_reference_metadata, ReferenceMetadata};
+use log::{info, warn};
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 // Stores results from Wikidata checks.
 #[derive(Debug, Clone, Default)]
@@ -10,6 +14,7 @@ pub struct WikidataInfo {
     pub taxon_qid: Option<String>,
     pub reference_qid: Option<String>,
     pub occurrence_exists: bool, // Added field for occurrence check
+    pub reference_metadata: Option<ReferenceMetadata>,
 }
 
 // Structure to deserialize SPARQL JSON results (both SELECT and ASK)
@@ -45,6 +50,11 @@ struct SparqlBinding {
 const WIKIDATA_SPARQL_URL: &str = "https://query.wikidata.org/sparql";
 pub const USER_AGENT: &str =
     "lotus-o3/0.1 (https://github.com/your_repo; your_email@example.com) reqwest/0.11"; // Replace with actual info
+
+static JOURNAL_LABEL_CACHE: Lazy<Mutex<HashMap<String, Option<String>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static JOURNAL_ISSN_CACHE: Lazy<Mutex<HashMap<String, Option<String>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 // Helper function to execute a SPARQL query and parse the result
 async fn execute_sparql_query(query: &str, client: &reqwest::Client) -> Result<SparqlResponse> {
@@ -105,22 +115,104 @@ async fn check_taxon(taxon_name: &str, client: &reqwest::Client) -> Result<Optio
 
 // Check for reference (publication) by DOI (P356)
 async fn check_reference(doi: &str, client: &reqwest::Client) -> Result<Option<String>> {
-    let doi_upper = doi.to_uppercase();
-    let query = format!(
-        // We make sure to handle DOI of scholarly articles
-        // by using the SERVICE clause for scholarly articles. See Wikidata graph split.
-        "SELECT ?item WHERE {{
-            {{
-                ?item wdt:P356 \"{doi_upper}\".
-            }} UNION {{
-                SERVICE wdsubgraph:scholarly_articles {{
-                    ?item wdt:P356 \"{doi_upper}\".
+    let trimmed = doi.trim();
+    let mut candidates = Vec::new();
+    candidates.push(trimmed.to_string());
+
+    let upper = trimmed.to_uppercase();
+    if upper != trimmed {
+        candidates.push(upper);
+    }
+
+    let lower = trimmed.to_lowercase();
+    if lower != trimmed && lower != trimmed.to_uppercase() {
+        candidates.push(lower);
+    }
+
+    for candidate in candidates {
+        let escaped = candidate.replace('\"', "\\\"");
+        let query = format!(
+            r#"SELECT ?item WHERE {{
+                {{
+                    ?item wdt:P356 "{escaped}".
+                }} UNION {{
+                    SERVICE wdsubgraph:scholarly_articles {{
+                        ?item wdt:P356 "{escaped}".
+                    }}
                 }}
-            }}
-        }}"
+            }}"#
+        );
+        let response = execute_sparql_query(&query, client).await?;
+        if let Some(qid) = extract_qid(&response, "item") {
+            return Ok(Some(qid));
+        }
+    }
+
+    Ok(None)
+}
+
+async fn lookup_journal_qid(title: &str, client: &reqwest::Client) -> Result<Option<String>> {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(cached) = JOURNAL_LABEL_CACHE
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(trimmed).cloned())
+    {
+        return Ok(cached);
+    }
+
+    let escaped = trimmed.replace('"', "\"");
+    let query = format!(
+        r#"SELECT ?item WHERE {{
+            VALUES ?class {{ wd:Q5633421 wd:Q1002697 wd:Q737498 }}
+            ?item wdt:P31/wdt:P279* ?class ;
+                  rdfs:label ?label .
+            FILTER (lcase(str(?label)) = lcase("{escaped}"))
+        }} LIMIT 1"#
     );
+
     let response = execute_sparql_query(&query, client).await?;
-    Ok(extract_qid(&response, "item"))
+    let qid = extract_qid(&response, "item");
+    if let Ok(mut cache) = JOURNAL_LABEL_CACHE.lock() {
+        cache.insert(trimmed.to_string(), qid.clone());
+    }
+    Ok(qid)
+}
+
+async fn lookup_journal_qid_by_issn(
+    issn: &str,
+    client: &reqwest::Client,
+) -> Result<Option<String>> {
+    let trimmed = issn.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(cached) = JOURNAL_ISSN_CACHE
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(trimmed).cloned())
+    {
+        return Ok(cached);
+    }
+
+    let escaped = trimmed.replace('"', "\"");
+    let query = format!(
+        r#"SELECT ?item WHERE {{
+            ?item wdt:P236 "{escaped}" .
+        }} LIMIT 1"#
+    );
+
+    let response = execute_sparql_query(&query, client).await?;
+    let qid = extract_qid(&response, "item");
+    if let Ok(mut cache) = JOURNAL_ISSN_CACHE.lock() {
+        cache.insert(trimmed.to_string(), qid.clone());
+    }
+    Ok(qid)
 }
 
 // Check if the specific occurrence (chemical P703 taxon, ref DOI) exists
@@ -168,6 +260,7 @@ pub async fn check_wikidata(
 
     let chemical_qid_fut = check_chemical(inchikey, client);
     let taxon_qid_fut = check_taxon(&record.taxon_name, client);
+    info!("Searching Wikidata for DOI {}", record.reference_doi);
     let reference_qid_fut = check_reference(&record.reference_doi, client);
 
     // Execute entity checks concurrently
@@ -180,9 +273,48 @@ pub async fn check_wikidata(
     let reference_qid = reference_result?;
 
     let mut occurrence_exists = false;
+    let mut reference_metadata = None;
     // Only check occurrence if all three entities were found
     if let (Some(chem_q), Some(tax_q), Some(ref_q)) = (&chemical_qid, &taxon_qid, &reference_qid) {
         occurrence_exists = check_occurrence(chem_q, tax_q, ref_q, client).await?;
+    } else if reference_qid.is_none() {
+        info!(
+            "DOI {} not found on Wikidata. Falling back to Crossref metadata lookup.",
+            record.reference_doi
+        );
+        match fetch_reference_metadata(&record.reference_doi, client).await {
+            Ok(Some(mut metadata)) => {
+                if let Some(issn) = metadata.issn.clone() {
+                    match lookup_journal_qid_by_issn(&issn, client).await {
+                        Ok(Some(journal_qid)) => metadata.journal_qid = Some(journal_qid),
+                        Ok(None) => {}
+                        Err(err) => warn!(
+                            "Failed to match journal ISSN {} on Wikidata: {}",
+                            issn, err
+                        ),
+                    }
+                }
+
+                if metadata.journal_qid.is_none() {
+                    if let Some(title) = metadata.container_title.clone() {
+                        match lookup_journal_qid(&title, client).await {
+                            Ok(Some(journal_qid)) => metadata.journal_qid = Some(journal_qid),
+                            Ok(None) => {}
+                            Err(err) => warn!(
+                                "Failed to match journal '{}' on Wikidata: {}",
+                                title, err
+                            ),
+                        }
+                    }
+                }
+                reference_metadata = Some(metadata);
+            }
+            Ok(None) => reference_metadata = None,
+            Err(err) => warn!(
+                "Failed to fetch Crossref metadata for DOI {}: {}",
+                record.reference_doi, err
+            ),
+        }
     }
 
     Ok(WikidataInfo {
@@ -190,6 +322,7 @@ pub async fn check_wikidata(
         taxon_qid,
         reference_qid,
         occurrence_exists,
+        reference_metadata,
     })
 }
 

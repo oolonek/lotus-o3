@@ -1,0 +1,33 @@
+taxon_name,chemical_entity_name,InChIKey,chemical_entity_smiles,reference_doi
+Vernonanthura patens (Kunth) H.Rob.,1 - bromo-octadecane,WSULSMOGMLRGKU-UHFFFAOYSA-N,CCCCCCCCCCCCCCCCCCBr,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,2 - bromo dodecane,GIUUCQVKMWBSRT-UHFFFAOYSA-N,CCCCCCCCCCC(C)Br,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,squalene,YYGNTYWPHWGJRM-AAJYLUCBSA-N,CC(=CCC/C(=C/CC/C(=C/CC/C=C(/CC/C=C(/CCC=C(C)C)\C)\C)/C)/C)C,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,"heptadecane, 3-methyl-",HPDKJRSKBCPMIY-UHFFFAOYSA-N,CCCCCCCCCCCCCCC(C)CC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,hexadecane,DCAYPVUWAIABOU-UHFFFAOYSA-N,CCCCCCCCCCCCCCCC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,α-caryophyllene,FAMPSKZZVDUYOS-HRGUGZIWSA-N,C/C/1=C\CC(/C=C/C/C(=C/CC1)/C)(C)C,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,nonadecane,LQERIDTXQFOHKA-UHFFFAOYSA-N,CCCCCCCCCCCCCCCCCCC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,hentriacontane,IUJAMGNYPWYUPM-UHFFFAOYSA-N,CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,1-iodo-hexadecane,KMWHQYDMBYABKL-UHFFFAOYSA-N,CCCCCCCCCCCCCCCCI,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,eicosane,CBFCDTFDPHXCNY-UHFFFAOYSA-N,CCCCCCCCCCCCCCCCCCCC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,4-methyl-heptadecane,YPPNOYRCEQRCHY-UHFFFAOYSA-N,CCCCCCCCCCCCCC(C)CCC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,"5,14-dibutyl-octadecane",VZZCEMBCJSFMMD-UHFFFAOYSA-N,CCCCC(CCCC)CCCCCCCCC(CCCC)CCCC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,9-octyl-heptadecane,ZLIOPNROBPMBFI-UHFFFAOYSA-N,CCCCCCCCC(CCCCCCCC)CCCCCCCC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,octadecane,RZJRJXONCZWCBN-UHFFFAOYSA-N,CCCCCCCCCCCCCCCCCC,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,lupeol,MQYXUWHLBZFQQO-QGTGJCAVSA-N,CC(=C)[C@@H]1CC[C@]2([C@H]1[C@H]3CC[C@@H]4[C@]5(CC[C@@H](C([C@@H]5CC[C@]4([C@@]3(CC2)C)C)(C)C)O)C)C,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,"2,6,11-trimethyl-dodecane",FONXOARHSFUBAN-UHFFFAOYSA-N,CC(C)CCCCC(C)CCCC(C)C,10.5772/28961
+Vernonanthura patens (Kunth) H.Rob.,heptadecane,NDJKXXJCMXVBJW-UHFFFAOYSA-N,CCCCCCCCCCCCCCCCC,10.5772/28961
+Montrichardia linifera (Arruda) Schott,p-hydroxybenzaldehyde,RGHHSNMVTDWUBI-UHFFFAOYSA-N,C1=CC(=CC=C1C=O)O,10.11144/javeriana.sc19-3.mlab
+Pavonia malacophylla (Link & Otto) Garcke,kaempferol 3-o-β-d-glucopyranoside,JPUKWEQWGBDDQB-QSOFNFLRSA-N,C1=CC(=CC=C1C2=C(C(=O)C3=C(C=C(C=C3O2)O)O)O[C@H]4[C@@H]([C@H]([C@@H]([C@H](O4)CO)O)O)O)O,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,"5,7-dihydroxy-3,8,4'-trimethoxyflavone",RXQVMRRNRHSOTC-UHFFFAOYSA-N,COC1=CC=C(C=C1)C2=C(C(=O)C3=C(O2)C(=C(C=C3O)O)OC)OC,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,pheophytin b,AMVFDCTXPYHACR-KMFDAVQUSA-N,CCC\1=C2C=C3C(=C4C(=O)[C@@H](C(=C5[C@H]([C@@H](C(=CC6=NC(=CC(=N2)/C1=C/O)C(=C6C)C=C)N5)C)CCC(=O)OC/C=C(\C)/CCC[C@H](C)CCC[C@H](C)CCCC(C)C)C4=N3)C(=O)OC)C,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,methyl-4-hydroxycinnamate,NITWSHWHQAQBAW-UHFFFAOYSA-N,COC(=O)C=CC1=CC=C(C=C1)O,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,"3,5,7,3',4'-pentahydroxyflavone",REFJWTPEDVJJIY-UHFFFAOYSA-N,C1=CC(=C(C=C1C2=C(C(=O)C3=C(C=C(C=C3O2)O)O)O)O)O,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,lupeol,MQYXUWHLBZFQQO-QGTGJCAVSA-N,CC(=C)[C@@H]1CC[C@]2([C@H]1[C@H]3CC[C@@H]4[C@]5(CC[C@@H](C([C@@H]5CC[C@]4([C@@]3(CC2)C)C)(C)C)O)C)C,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,pheophytin a,FDHFJXKRMIVNCQ-OSIZZBRKSA-N,CCC1=C(C2=NC1=CC3=C(C4=C([C@@H](C(=C5[C@H]([C@@H](C(=CC6=NC(=C2)C(=C6C)C=C)N5)C)CCC(=O)OC/C=C(\C)/CCC[C@H](C)CCC[C@H](C)CCCC(C)C)C4=N3)C(=O)OC)O)C)C,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,"3,5,7,4'-tetrahydroxyflavone",IYRMWMYZSQPJKC-UHFFFAOYSA-N,C1=CC(=CC=C1C2=C(C(=O)C3=C(C=C(C=C3O2)O)O)O)O,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,"5,8-dihydroxy-7,4'-dimethoxyflavone",OVFDXRVXQRNNCT-UHFFFAOYSA-N,COC1=CC=C(C=C1)C2=CC(=O)C3=C(O2)C(=C(C=C3O)OC)O,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,α-amyrin,FSLPMRQHCOLESF-SFMCKYFRSA-N,C[C@@H]1CC[C@@]2(CC[C@@]3(C(=CC[C@H]4[C@]3(CC[C@@H]5[C@@]4(CC[C@@H](C5(C)C)O)C)C)[C@@H]2[C@H]1C)C)C,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,decanol,MWKFXSUHUHTGQN-UHFFFAOYSA-N,CCCCCCCCCCO,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,β-amyrin,JFSHUTJDVKUMTJ-QHPUVITPSA-N,C[C@@]12CC[C@@]3(C(=CC[C@H]4[C@]3(CC[C@@H]5[C@@]4(CC[C@@H](C5(C)C)O)C)C)[C@@H]1CC(CC2)(C)C)C,10.21577/0100-4042.20250134
+Pavonia malacophylla (Link & Otto) Garcke,β-sitosterol,KZJWDPNRJALLNS-VJSFXXLFSA-N,CC[C@H](CC[C@@H](C)[C@H]1CC[C@@H]2[C@@]1(CC[C@H]3[C@H]2CC=C4[C@@]3(CC[C@@H](C4)O)C)C)C(C)C,10.21577/0100-4042.20250134
+Curatella americana L.,lupeol,MQYXUWHLBZFQQO-QGTGJCAVSA-N,CC(=C)[C@@H]1CC[C@]2([C@H]1[C@H]3CC[C@@H]4[C@]5(CC[C@@H](C([C@@H]5CC[C@]4([C@@]3(CC2)C)C)(C)C)O)C)C,10.29327/269504.3.1-28

@@ -1,0 +1,4 @@
+taxon_name,chemical_entity_name,InChIKey,chemical_entity_smiles,reference_doi
+Vernonanthura patens (Kunth) H.Rob.,1 - bromo-octadecane,WSULSMOGMLRGKU-UHFFFAOYSA-N,CCCCCCCCCCCCCCCCCCBr,10.5772/28961
+Montrichardia linifera (Arruda) Schott,p-hydroxybenzaldehyde,RGHHSNMVTDWUBI-UHFFFAOYSA-N,C1=CC(=CC=C1C=O)O,10.11144/javeriana.sc19-3.mlab
+Curatella americana L.,lupeol,MQYXUWHLBZFQQO-QGTGJCAVSA-N,CC(=C)[C@@H]1CC[C@]2([C@H]1[C@H]3CC[C@@H]4[C@]5(CC[C@@H](C([C@@H]5CC[C@]4([C@@]3(CC2)C)C)(C)C)O)C)C,10.29327/269504.3.1-28

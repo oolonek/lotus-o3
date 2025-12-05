@@ -3,6 +3,7 @@ pub mod csv_handler;
 pub mod enrichment;
 pub mod wikidata;
 pub mod cli;
+pub mod reference;
 
 use clap::Parser;
 use cli::{Cli, OutputMode};
@@ -10,8 +11,8 @@ use csv_handler::load_and_validate_csv;
 use enrichment::enrich_record;
 use error::{CrateError, Result};
 use log::{error, info, warn};
-use reqwest::dns::Name;
 use reqwest::Client;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufWriter;
 use std::time::Instant;
@@ -128,6 +129,7 @@ async fn main() -> Result<()> {
     // Calculate additional statistics
     let mut new_chemicals_to_create = 0;
     let mut new_occurrences_to_create = 0;
+    let mut new_references_to_create: HashSet<String> = HashSet::new();
 
     for (enriched_data_item, wikidata_info_item) in &processed_data {
         // Check for new chemicals
@@ -148,6 +150,12 @@ async fn main() -> Result<()> {
             wikidata_info_item.reference_qid.is_some() {
                 new_occurrences_to_create += 1;
             }
+        }
+
+        if wikidata_info_item.reference_qid.is_none()
+            && wikidata_info_item.reference_metadata.is_some()
+        {
+            new_references_to_create.insert(enriched_data_item.reference_doi.to_lowercase());
         }
     }
 
@@ -190,6 +198,10 @@ async fn main() -> Result<()> {
     println!("Successfully processed (passed enrichment and Wikidata checks): {}", processed_data.len());
     println!("New chemical entities to be created: {}", new_chemicals_to_create);
     println!("New occurrence statements to be created: {}", new_occurrences_to_create);
+    println!(
+        "New references queued for creation (via Crossref): {}",
+        new_references_to_create.len()
+    );
     
     println!("Errors encountered during processing: {}", errors_count);
     
@@ -206,4 +218,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
