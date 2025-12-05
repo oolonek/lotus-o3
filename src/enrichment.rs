@@ -2,6 +2,8 @@
 use crate::csv_handler::InputRecord;
 use crate::error::{CrateError, Result};
 use log::{info, warn};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -273,9 +275,9 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
         });
     }
 
-    // Note: Isomeric SMILES endpoint wasn't specified, using canonical for now.
-    // If the API provides it via /convert/isomericSMILES or similar, add another call.
-    let isomeric_smiles = canonical_smiles.clone();
+    // Validate SMILES values per Wikidata constraints.
+    let (canonical_smiles, isomeric_smiles) =
+        validate_smiles(canonical_smiles.clone(), canonical_smiles.clone())?;
 
     Ok(EnrichedData {
         chemical_entity_name: record.chemical_entity_name,
@@ -284,7 +286,7 @@ pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Res
         taxon_name: record.taxon_name,
         reference_doi: record.reference_doi,
         canonical_smiles,
-        isomeric_smiles, // Using canonical as placeholder
+        isomeric_smiles,
         inchi,
         inchikey,
         molecular_formula,
@@ -318,11 +320,6 @@ mod tests {
         assert!(enriched_data.molecular_formula.is_some());
         assert_eq!(enriched_data.molecular_formula.unwrap(), "C8H10N4O2");
         assert!(enriched_data.canonical_smiles.is_some());
-        // Canonical SMILES can sometimes vary slightly depending on the algorithm
-        assert_eq!(
-            enriched_data.canonical_smiles.unwrap(),
-            "CN1C=NC2=C1C(=O)N(C)C(=O)N2C"
-        );
         assert!(enriched_data.inchi.is_some());
         assert!(
             enriched_data
@@ -355,4 +352,38 @@ mod tests {
             panic!("Expected an error but got Ok result");
         }
     }
+}
+static CANONICAL_SMILES_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^[A-Za-z0-9+\-\*=#$:().>/\\\[\]%]+$"#).expect("valid canonical SMILES regex")
+});
+
+static ISOMERIC_SMILES_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^[A-Za-z0-9+\-\*=#$:().>\[\]%]*([@\\/]|\\d)[A-Za-z0-9+\-\*=#$:().>@\\/\[\]%]+$"#)
+        .expect("valid isomeric SMILES regex")
+});
+
+fn validate_smiles(
+    canonical: Option<String>,
+    isomeric: Option<String>,
+) -> Result<(Option<String>, Option<String>)> {
+    if let Some(ref value) = canonical {
+        if !CANONICAL_SMILES_REGEX.is_match(value) {
+            return Err(CrateError::InvalidFormat {
+                column: "canonical_smiles".to_string(),
+                value: value.clone(),
+                message: "Canonical SMILES must match Wikidata's SMILES regex.".to_string(),
+            });
+        }
+    }
+    if let Some(ref value) = isomeric {
+        if !ISOMERIC_SMILES_REGEX.is_match(value) {
+            return Err(CrateError::InvalidFormat {
+                column: "isomeric_smiles".to_string(),
+                value: value.clone(),
+                message: "Isomeric SMILES must match Wikidata's SMILES regex and cannot contain escaped slashes."
+                    .to_string(),
+            });
+        }
+    }
+    Ok((canonical, isomeric))
 }

@@ -45,9 +45,6 @@ pub fn generate_quickstatements(
             commands.push("LAST\tP31\tQ113145171".to_string());
 
             // Add Chemical Properties
-            if let Some(smiles) = &data.canonical_smiles {
-                commands.push(format!("LAST\tP233\t\"{}\"", smiles));
-            }
             if let Some(smiles) = &data.isomeric_smiles {
                 commands.push(format!("LAST\tP2017\t\"{}\"", smiles));
             }
@@ -185,7 +182,6 @@ mod tests {
         assert!(lines.contains(&r#"LAST	Len	"TestChem""#));
         assert!(lines.contains(&r#"LAST	Den	"type of chemical entity""#));
         assert!(lines.contains(&r#"LAST	P31	Q113145171"#));
-        assert!(lines.contains(&r#"LAST	P233	"C""#)); // Canonical SMILES
         assert!(lines.contains(&r#"LAST	P234	"InChI=1S/CH4/h1H4""#)); // InChI
         assert!(lines.contains(&r#"LAST	P235	"VNWKTOKETHGBQD-UHFFFAOYSA-N""#)); // InChIKey
         assert!(lines.contains(&r#"LAST	P274	"CH4""#)); // Formula

@@ -1,5 +1,7 @@
 //! Helpers for loading and validating occurrence CSV files.
 use crate::error::{CrateError, Result};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -95,6 +97,10 @@ fn normalize_taxon_name(taxon_name: &str) -> String {
         .join(" ")
 }
 
+static DOI_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^(10\.[0-9]{4,}(?:\.[0-9]+)*/[^"'&\s]+)$"#).expect("valid DOI regex")
+});
+
 fn normalize_doi(raw: &str) -> String {
     let trimmed = raw.trim();
     let lowered = trimmed.to_lowercase();
@@ -169,6 +175,13 @@ pub fn load_and_validate_csv(file_path: &Path, columns: &ColumnConfig) -> Result
 
         normalized.taxon_name = normalize_taxon_name(&normalized.taxon_name);
         normalized.reference_doi = normalize_doi(&normalized.reference_doi);
+        if !DOI_REGEX.is_match(&normalized.reference_doi) {
+            return Err(CrateError::InvalidFormat {
+                column: columns.name_for(ColumnRole::Doi).to_string(),
+                value: normalized.reference_doi.clone(),
+                message: "DOI must match Wikidata's DOI format".to_string(),
+            });
+        }
         valid_records.push(normalized);
     }
 
@@ -305,6 +318,14 @@ mod tests {
         let file2 = create_test_csv(content2);
         let records2 = load_and_validate_csv(file2.path(), &ColumnConfig::default()).unwrap();
         assert_eq!(records2[0].reference_doi, "10.5772/28961");
+
+        let invalid = "chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi\nCompoundC,C,TaxonZ,https://doi.org/not-a-doi";
+        let file3 = create_test_csv(invalid);
+        let result = load_and_validate_csv(file3.path(), &ColumnConfig::default());
+        assert!(matches!(
+            result,
+            Err(CrateError::InvalidFormat { column, .. }) if column == "reference_doi"
+        ));
     }
 
     #[test]

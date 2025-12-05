@@ -16,6 +16,13 @@ pub enum CrateError {
     #[error("Missing required value in column '{column}' at row {row}")]
     MissingValue { column: String, row: usize },
 
+    #[error("Invalid value '{value}' for column '{column}': {message}")]
+    InvalidFormat {
+        column: String,
+        value: String,
+        message: String,
+    },
+
     #[error("API request error: {0}")]
     ApiRequestError(reqwest::Error),
 
