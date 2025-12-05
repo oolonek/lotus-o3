@@ -148,6 +148,7 @@ mod tests {
                 chemical_entity_name: "TestChem".to_string(),
                 input_smiles: "C".to_string(),
                 sanitized_smiles: "C".to_string(),
+                smiles_were_sanitized: false,
                 taxon_name: "TestTaxon".to_string(),
                 reference_doi: "10.1/test".to_string(),
                 canonical_smiles: Some("C".to_string()),

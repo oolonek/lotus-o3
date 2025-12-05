@@ -409,7 +409,11 @@ fn build_record_reports(records: &[(EnrichedData, WikidataInfo)]) -> Vec<RecordR
 
             RecordReport {
                 chemical_entity_name: data.chemical_entity_name.clone(),
-                chemical_entity_smiles: data.sanitized_smiles.clone(),
+                original_smiles: data.input_smiles.clone(),
+                sanitized_smiles: data.sanitized_smiles.clone(),
+                canonical_smiles: data.canonical_smiles.clone(),
+                isomeric_smiles: data.isomeric_smiles.clone(),
+                smiles_were_sanitized: data.smiles_were_sanitized,
                 taxon_name: data.taxon_name.clone(),
                 reference_doi: data.reference_doi.clone(),
                 chemical_qid: info.chemical_qid.clone(),
@@ -429,7 +433,11 @@ fn write_status_report(rows: &[RecordReport], path: &Path) -> Result<()> {
     let mut writer = WriterBuilder::new().delimiter(b'\t').from_path(path)?;
     writer.write_record([
         "chemical_entity_name",
-        "chemical_entity_smiles",
+        "input_smiles",
+        "sanitized_smiles",
+        "canonical_smiles",
+        "isomeric_smiles",
+        "smiles_were_sanitized",
         "taxon_name",
         "reference_doi",
         "chemical_qid",
@@ -448,9 +456,15 @@ fn write_status_report(rows: &[RecordReport], path: &Path) -> Result<()> {
         } else {
             row.issues.join("; ")
         };
+        let canonical = row.canonical_smiles.as_deref().unwrap_or("");
+        let isomeric = row.isomeric_smiles.as_deref().unwrap_or("");
         writer.write_record([
             row.chemical_entity_name.as_str(),
-            row.chemical_entity_smiles.as_str(),
+            row.original_smiles.as_str(),
+            row.sanitized_smiles.as_str(),
+            canonical,
+            isomeric,
+            bool_to_label(row.smiles_were_sanitized),
             row.taxon_name.as_str(),
             row.reference_doi.as_str(),
             row.chemical_qid.as_deref().unwrap_or(""),
@@ -501,7 +515,11 @@ fn bool_to_label(flag: bool) -> &'static str {
 
 struct RecordReport {
     chemical_entity_name: String,
-    chemical_entity_smiles: String,
+    original_smiles: String,
+    sanitized_smiles: String,
+    canonical_smiles: Option<String>,
+    isomeric_smiles: Option<String>,
+    smiles_were_sanitized: bool,
     taxon_name: String,
     reference_doi: String,
     chemical_qid: Option<String>,

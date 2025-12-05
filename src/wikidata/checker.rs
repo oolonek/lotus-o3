@@ -273,7 +273,7 @@ pub async fn check_wikidata(
         .as_deref()
         .ok_or_else(|| CrateError::MissingDescriptor {
             descriptor: "inchikey".to_string(),
-            smiles: record.input_smiles.clone(),
+            smiles: record.sanitized_smiles.clone(),
         })?;
 
     let chemical_qid_fut = check_chemical(inchikey, client);
@@ -353,6 +353,7 @@ mod tests {
             chemical_entity_name: "Test Compound".to_string(),
             input_smiles: "C".to_string(),
             sanitized_smiles: "C".to_string(),
+            smiles_were_sanitized: false,
             taxon_name: "Test Taxon".to_string(),
             reference_doi: "10.1234/test".to_string(),
             canonical_smiles: Some("C".to_string()),
