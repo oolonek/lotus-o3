@@ -107,7 +107,8 @@ mod tests {
 
     #[test]
     fn test_missing_header() {
-        let content = "chemical_entity_name,chemical_entity_smiles,taxon_name\nCompoundA,C1=CC=CC=C1,TaxonX";
+        let content =
+            "chemical_entity_name,chemical_entity_smiles,taxon_name\nCompoundA,C1=CC=CC=C1,TaxonX";
         let file = create_test_csv(content);
         let result = load_and_validate_csv(file.path());
         assert!(matches!(result, Err(CrateError::MissingHeader(h)) if h == "reference_doi"));
@@ -118,10 +119,12 @@ mod tests {
         let content = "chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi\nCompoundA,,TaxonX,10.1000/test1";
         let file = create_test_csv(content);
         let result = load_and_validate_csv(file.path());
-        assert!(matches!(result, Err(CrateError::MissingValue{ column, row }) if column == "chemical_entity_smiles" && row == 2));
+        assert!(
+            matches!(result, Err(CrateError::MissingValue{ column, row }) if column == "chemical_entity_smiles" && row == 2)
+        );
     }
 
-     #[test]
+    #[test]
     fn test_empty_csv() {
         let content = "chemical_entity_name,chemical_entity_smiles,taxon_name,reference_doi";
         let file = create_test_csv(content);
@@ -144,7 +147,10 @@ mod tests {
             "Vernonanthura patens"
         );
         assert_eq!(normalize_taxon_name("Single"), "Single");
-        assert_eq!(normalize_taxon_name("  Leading  and trailing  "), "Leading and");
+        assert_eq!(
+            normalize_taxon_name("  Leading  and trailing  "),
+            "Leading and"
+        );
     }
 
     #[test]

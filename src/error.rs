@@ -32,13 +32,11 @@ pub enum CrateError {
     #[error("Missing expected descriptor '{descriptor}' in API response for SMILES: {smiles}")]
     MissingDescriptor { descriptor: String, smiles: String },
 
-
     #[error("Failed to sanitize SMILES: {input_smiles}")]
     SmilesSanitizationFailed {
         input_smiles: String,
         reason: String,
     },
-
 
     #[error("Wikidata SPARQL query failed: {0}")]
     SparqlQueryError(reqwest::Error),

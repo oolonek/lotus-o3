@@ -1,9 +1,9 @@
 use crate::enrichment::EnrichedData;
 use crate::error::{CrateError, Result};
-use crate::reference::{format_retrieved_date, ReferenceMetadata, CROSSREF_QID};
+use crate::reference::{CROSSREF_QID, ReferenceMetadata, format_retrieved_date};
 use crate::wikidata::checker::WikidataInfo;
 use log::warn;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::io::Write;
 
 // Generates a QuickStatements V1 command string for a list of records.
@@ -13,23 +13,16 @@ pub fn generate_quickstatements(
 ) -> Result<()> {
     let mut temp_qid_counter = 0;
     let mut emitted_references: HashSet<String> = HashSet::new();
-    let mut reference_creation_indices: HashMap<String, usize> = HashMap::new();
-    let mut create_counter: usize = 0;
 
     for (data, info) in records {
         let mut commands = Vec::new();
         let mut current_chemical_qid = info.chemical_qid.clone();
-        let doi_key = data.reference_doi.trim().to_lowercase();
-        let mut reference_creation_index = reference_creation_indices.get(&doi_key).cloned();
 
         if info.reference_qid.is_none() {
             if let Some(metadata) = &info.reference_metadata {
                 let key = metadata.doi.to_lowercase();
-                if emitted_references.insert(key.clone()) {
+                if emitted_references.insert(key) {
                     commands.extend(build_reference_commands(metadata));
-                    reference_creation_indices.insert(key.clone(), create_counter);
-                    reference_creation_index = Some(create_counter);
-                    create_counter += 1;
                 }
             }
         }
@@ -39,7 +32,6 @@ pub fn generate_quickstatements(
             temp_qid_counter += 1;
             let temp_qid = format!("CREATE_{}", temp_qid_counter);
             commands.push("CREATE".to_string());
-            create_counter += 1;
             current_chemical_qid = Some(temp_qid.clone()); // Use temporary ID for subsequent commands
 
             // Add Label (L), Description (D), Alias (A)
@@ -67,17 +59,13 @@ pub fn generate_quickstatements(
             if let Some(formula) = &data.molecular_formula {
                 commands.push(format!("LAST\tP274\t\"{}\"", formula));
             }
-            
+
             // Add occurrence statement with temporary ID when taxon and reference exist
-            if let (Some(taxon_qid), Some(reference_target)) = (
-                &info.taxon_qid,
-                resolve_reference_value(
-                    info.reference_qid.as_ref(),
-                    reference_creation_index,
-                    create_counter,
-                ),
-            ) {
-                commands.push(format!("LAST\tP703\t{}\tS248\t{}", taxon_qid, reference_target));
+            if let (Some(taxon_qid), Some(reference_qid)) = (&info.taxon_qid, &info.reference_qid) {
+                commands.push(format!(
+                    "LAST\tP703\t{}\tS248\t{}",
+                    taxon_qid, reference_qid
+                ));
             } else {
                 warn!(
                     "Skipping initial occurrence for {} because taxon/reference data are missing",
@@ -92,37 +80,27 @@ pub fn generate_quickstatements(
 
         // 2. Add Occurrence Statement if it doesn't exist and all QIDs are present
         if !info.occurrence_exists && info.chemical_qid.is_some() {
-            match (&current_chemical_qid, &info.taxon_qid) {
-                (Some(chem_qid), Some(tax_qid)) => {
-                    if let Some(reference_target) = resolve_reference_value(
-                        info.reference_qid.as_ref(),
-                        reference_creation_index,
-                        create_counter,
-                    ) {
-                        commands.push(format!(
-                            "{}\tP703\t{}\tS248\t{}",
-                            chem_qid, tax_qid, reference_target
-                        ));
-                        eprintln!(
-                            "Added occurrence for {} - Chem: {:?}, Taxon: {:?}",
-                            data.inchikey.as_deref().unwrap_or("N/A"),
-                            chem_qid,
-                            tax_qid
-                        );
-                    } else {
-                        warn!(
-                            "Skipping occurrence for {} - missing reference data for DOI {}",
-                            data.inchikey.as_deref().unwrap_or("N/A"),
-                            data.reference_doi
-                        );
-                    }
+            match (&current_chemical_qid, &info.taxon_qid, &info.reference_qid) {
+                (Some(chem_qid), Some(tax_qid), Some(ref_qid)) => {
+                    commands.push(format!(
+                        "{}\tP703\t{}\tS248\t{}",
+                        chem_qid, tax_qid, ref_qid
+                    ));
+                    eprintln!(
+                        "Added occurrence for {} - Chem: {:?}, Taxon: {:?}, Ref: {:?}",
+                        data.inchikey.as_deref().unwrap_or("N/A"),
+                        chem_qid,
+                        tax_qid,
+                        ref_qid
+                    );
                 }
                 _ => {
                     eprintln!(
-                        "Skipping occurrence for {} - missing QID (Chem: {:?}, Taxon: {:?})",
+                        "Skipping occurrence for {} - missing QID (Chem: {:?}, Taxon: {:?}, Ref: {:?})",
                         data.inchikey.as_deref().unwrap_or("N/A"),
                         current_chemical_qid,
-                        info.taxon_qid
+                        info.taxon_qid,
+                        info.reference_qid
                     );
                 }
             }
@@ -203,7 +181,7 @@ mod tests {
 
         assert!(lines.contains(&"CREATE"));
         // Use raw strings r#"..."# to avoid issues with escapes
-        assert!(lines.contains(&r#"LAST	Len	"TestChem""#)); 
+        assert!(lines.contains(&r#"LAST	Len	"TestChem""#));
         assert!(lines.contains(&r#"LAST	Den	"type of chemical entity""#));
         assert!(lines.contains(&r#"LAST	P31	Q113145171"#));
         assert!(lines.contains(&r#"LAST	P233	"C""#)); // Canonical SMILES
@@ -328,10 +306,7 @@ fn build_reference_commands(metadata: &ReferenceMetadata) -> Vec<String> {
         retrieved_date
     ));
 
-    let monolingual_lang = metadata
-        .title_language
-        .as_deref()
-        .unwrap_or("mul");
+    let monolingual_lang = metadata.title_language.as_deref().unwrap_or("mul");
     commands.push(format!(
         "LAST\tP1476\t{lang}:\"{title}\"\tS248\t{source}\tS813\t{retrieved}",
         lang = monolingual_lang,
@@ -403,24 +378,6 @@ fn escape_literal(value: &str) -> String {
         .to_string()
 }
 
-fn resolve_reference_value(
-    existing_qid: Option<&String>,
-    creation_index: Option<usize>,
-    create_counter: usize,
-) -> Option<String> {
-    if let Some(qid) = existing_qid {
-        return Some(qid.clone());
-    }
-
-    let index = creation_index?;
-    if create_counter == 0 || index >= create_counter {
-        return None;
-    }
-
-    let diff = (create_counter - 1).saturating_sub(index);
-    if diff == 0 {
-        Some("LAST".to_string())
-    } else {
-        Some(format!("LAST{}", diff))
-    }
-}
+// helper removed: QuickStatements cannot reuse placeholders like LAST-1, so
+// we only emit actual QIDs (or skip statements entirely when reference QIDs
+// are missing).

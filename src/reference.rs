@@ -1,11 +1,16 @@
 use crate::error::{CrateError, Result};
 use chrono::{Datelike, NaiveDate, Utc};
 use log::{info, warn};
+use once_cell::sync::Lazy;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 const CROSSREF_API_URL: &str = "https://api.crossref.org/works/doi";
 pub const CROSSREF_QID: &str = "Q5188229";
+static CROSSREF_CACHE: Lazy<Mutex<HashMap<String, Option<ReferenceMetadata>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone)]
 pub struct ReferenceMetadata {
@@ -114,6 +119,15 @@ pub async fn fetch_reference_metadata(
         return Ok(None);
     }
 
+    let key = trimmed.to_lowercase();
+    if let Some(cached) = CROSSREF_CACHE
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(&key).cloned())
+    {
+        return Ok(cached);
+    }
+
     let url = format!("{}/{}", CROSSREF_API_URL, trimmed);
     info!("Querying Crossref for DOI {}", trimmed);
     let response = match client
@@ -131,6 +145,7 @@ pub async fn fetch_reference_metadata(
 
     if response.status() == StatusCode::NOT_FOUND {
         warn!("Crossref returned 404 for DOI {}", trimmed);
+        cache_crossref_result(&key, None);
         return Ok(None);
     }
 
@@ -140,20 +155,27 @@ pub async fn fetch_reference_metadata(
             response.status(),
             trimmed
         );
+        cache_crossref_result(&key, None);
         return Ok(None);
     }
 
     let payload = match response.json::<CrossrefResponse>().await {
         Ok(data) => data,
         Err(err) => {
-            warn!("Failed to decode Crossref payload for DOI {}: {}", trimmed, err);
+            warn!(
+                "Failed to decode Crossref payload for DOI {}: {}",
+                trimmed, err
+            );
             return Err(CrateError::ApiJsonDecodeError(err));
         }
     };
 
     let message = match payload.message {
         Some(msg) => msg,
-        None => return Ok(None),
+        None => {
+            cache_crossref_result(&key, None);
+            return Ok(None);
+        }
     };
 
     let title = message
@@ -161,7 +183,10 @@ pub async fn fetch_reference_metadata(
         .and_then(|mut titles| titles.drain(..).find(|t| !t.trim().is_empty()))
         .unwrap_or_else(|| trimmed.to_string());
 
-    let language_code = message.language.as_deref().and_then(normalize_language_code);
+    let language_code = message
+        .language
+        .as_deref()
+        .and_then(normalize_language_code);
     let language_qid = language_code
         .as_deref()
         .and_then(language_code_to_qid)
@@ -223,7 +248,7 @@ pub async fn fetch_reference_metadata(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    Ok(Some(ReferenceMetadata {
+    let metadata = ReferenceMetadata {
         doi: trimmed.to_uppercase(),
         title,
         title_language: language_code,
@@ -237,7 +262,10 @@ pub async fn fetch_reference_metadata(
         journal_qid: None,
         authors,
         retrieved_on: Utc::now().date_naive(),
-    }))
+    };
+    let result = Some(metadata);
+    cache_crossref_result(&key, result.clone());
+    Ok(result)
 }
 
 fn normalize_language_code(code: &str) -> Option<String> {
@@ -245,7 +273,13 @@ fn normalize_language_code(code: &str) -> Option<String> {
     if normalized.is_empty() {
         None
     } else {
-        Some(normalized.split('-').next().unwrap_or(&normalized).to_string())
+        Some(
+            normalized
+                .split('-')
+                .next()
+                .unwrap_or(&normalized)
+                .to_string(),
+        )
     }
 }
 
@@ -287,4 +321,10 @@ pub fn format_retrieved_date(date: NaiveDate) -> String {
         month = date.month(),
         day = date.day()
     )
+}
+
+fn cache_crossref_result(doi_key: &str, value: Option<ReferenceMetadata>) {
+    if let Ok(mut cache) = CROSSREF_CACHE.lock() {
+        cache.insert(doi_key.to_string(), value);
+    }
 }

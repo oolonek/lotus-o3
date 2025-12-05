@@ -1,6 +1,6 @@
 use crate::enrichment::EnrichedData;
 use crate::error::{CrateError, Result};
-use crate::reference::{fetch_reference_metadata, ReferenceMetadata};
+use crate::reference::{ReferenceMetadata, fetch_reference_metadata};
 use log::{info, warn};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
@@ -54,6 +54,8 @@ pub const USER_AGENT: &str =
 static JOURNAL_LABEL_CACHE: Lazy<Mutex<HashMap<String, Option<String>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static JOURNAL_ISSN_CACHE: Lazy<Mutex<HashMap<String, Option<String>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static REFERENCE_QID_CACHE: Lazy<Mutex<HashMap<String, Option<String>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 // Helper function to execute a SPARQL query and parse the result
@@ -116,6 +118,15 @@ async fn check_taxon(taxon_name: &str, client: &reqwest::Client) -> Result<Optio
 // Check for reference (publication) by DOI (P356)
 async fn check_reference(doi: &str, client: &reqwest::Client) -> Result<Option<String>> {
     let trimmed = doi.trim();
+    let key = trimmed.to_lowercase();
+    if let Some(cached) = REFERENCE_QID_CACHE
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(&key).cloned())
+    {
+        return Ok(cached);
+    }
+    info!("Searching Wikidata for DOI {}", trimmed);
     let mut candidates = Vec::new();
     candidates.push(trimmed.to_string());
 
@@ -129,6 +140,7 @@ async fn check_reference(doi: &str, client: &reqwest::Client) -> Result<Option<S
         candidates.push(lower);
     }
 
+    let mut found = None;
     for candidate in candidates {
         let escaped = candidate.replace('\"', "\\\"");
         let query = format!(
@@ -144,11 +156,16 @@ async fn check_reference(doi: &str, client: &reqwest::Client) -> Result<Option<S
         );
         let response = execute_sparql_query(&query, client).await?;
         if let Some(qid) = extract_qid(&response, "item") {
-            return Ok(Some(qid));
+            found = Some(qid);
+            break;
         }
     }
 
-    Ok(None)
+    if let Ok(mut cache) = REFERENCE_QID_CACHE.lock() {
+        cache.insert(key, found.clone());
+    }
+
+    Ok(found)
 }
 
 async fn lookup_journal_qid(title: &str, client: &reqwest::Client) -> Result<Option<String>> {
@@ -260,7 +277,6 @@ pub async fn check_wikidata(
 
     let chemical_qid_fut = check_chemical(inchikey, client);
     let taxon_qid_fut = check_taxon(&record.taxon_name, client);
-    info!("Searching Wikidata for DOI {}", record.reference_doi);
     let reference_qid_fut = check_reference(&record.reference_doi, client);
 
     // Execute entity checks concurrently
@@ -288,10 +304,9 @@ pub async fn check_wikidata(
                     match lookup_journal_qid_by_issn(&issn, client).await {
                         Ok(Some(journal_qid)) => metadata.journal_qid = Some(journal_qid),
                         Ok(None) => {}
-                        Err(err) => warn!(
-                            "Failed to match journal ISSN {} on Wikidata: {}",
-                            issn, err
-                        ),
+                        Err(err) => {
+                            warn!("Failed to match journal ISSN {} on Wikidata: {}", issn, err)
+                        }
                     }
                 }
 
@@ -300,10 +315,9 @@ pub async fn check_wikidata(
                         match lookup_journal_qid(&title, client).await {
                             Ok(Some(journal_qid)) => metadata.journal_qid = Some(journal_qid),
                             Ok(None) => {}
-                            Err(err) => warn!(
-                                "Failed to match journal '{}' on Wikidata: {}",
-                                title, err
-                            ),
+                            Err(err) => {
+                                warn!("Failed to match journal '{}' on Wikidata: {}", title, err)
+                            }
                         }
                     }
                 }

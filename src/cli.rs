@@ -15,7 +15,6 @@ pub struct Cli {
     /// Path to the output QuickStatements file (required if mode is "qs").
     #[arg(short, long, value_name = "FILE", required_if_eq("mode", "qs"))]
     pub output_file: Option<PathBuf>,
-
     // TODO: Add options for verbosity/logging level
     // TODO: Add options for direct push credentials (if implemented)
 }
@@ -37,15 +36,7 @@ mod tests {
 
     #[test]
     fn test_cli_qs_mode() {
-        let args = vec![
-            "lotus-o3",
-            "-i",
-            "input.csv",
-            "-m",
-            "qs",
-            "-o",
-            "output.qs",
-        ];
+        let args = vec!["lotus-o3", "-i", "input.csv", "-m", "qs", "-o", "output.qs"];
         let cli = Cli::parse_from(args);
         assert_eq!(cli.input_file, PathBuf::from("input.csv"));
         assert_eq!(cli.mode, OutputMode::QuickStatements);
