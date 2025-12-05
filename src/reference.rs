@@ -1,3 +1,4 @@
+//! Crossref reference enrichment helpers.
 use crate::error::{CrateError, Result};
 use chrono::{Datelike, NaiveDate, Utc};
 use log::{info, warn};
@@ -12,6 +13,7 @@ pub const CROSSREF_QID: &str = "Q5188229";
 static CROSSREF_CACHE: Lazy<Mutex<HashMap<String, Option<ReferenceMetadata>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Structured metadata about a reference retrieved from Crossref.
 #[derive(Debug, Clone)]
 pub struct ReferenceMetadata {
     pub doi: String,
@@ -29,12 +31,14 @@ pub struct ReferenceMetadata {
     pub retrieved_on: NaiveDate,
 }
 
+/// Author name and ordinal data.
 #[derive(Debug, Clone)]
 pub struct ReferenceAuthor {
     pub full_name: String,
     pub ordinal: usize,
 }
 
+/// Publication date information with precision metadata.
 #[derive(Debug, Clone)]
 pub struct ReferenceDate {
     pub year: i32,
@@ -43,6 +47,7 @@ pub struct ReferenceDate {
 }
 
 impl ReferenceDate {
+    /// Converts Crossref date-parts into a [`ReferenceDate`].
     pub fn from_parts(parts: &[i32]) -> Option<Self> {
         if parts.is_empty() {
             return None;
@@ -55,6 +60,7 @@ impl ReferenceDate {
         Some(Self { year, month, day })
     }
 
+    /// Returns the Wikidata time precision value.
     pub fn precision(&self) -> u8 {
         if self.day.is_some() {
             11
@@ -65,6 +71,7 @@ impl ReferenceDate {
         }
     }
 
+    /// Formats the date for QuickStatements.
     pub fn to_quickstatements_time(&self) -> String {
         let month = self.month.unwrap_or(1);
         let day = self.day.unwrap_or(1);
@@ -110,6 +117,7 @@ struct CrossrefIssued {
     date_parts: Vec<Vec<i32>>,
 }
 
+/// Fetches Crossref metadata for a DOI and converts it into [`ReferenceMetadata`].
 pub async fn fetch_reference_metadata(
     doi: &str,
     client: &reqwest::Client,
@@ -314,6 +322,7 @@ fn map_work_type_to_qid(work_type: Option<&str>) -> &'static str {
     }
 }
 
+/// Formats a retrieval date for QuickStatements references.
 pub fn format_retrieved_date(date: NaiveDate) -> String {
     format!(
         "+{year:04}-{month:02}-{day:02}T00:00:00Z/11",

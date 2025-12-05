@@ -1,9 +1,10 @@
+//! Helpers for loading and validating occurrence CSV files.
 use crate::error::{CrateError, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-// Represents a row from the input CSV file.
+/// A normalized occurrence record read from the CSV.
 #[derive(Debug, Deserialize)]
 pub struct InputRecord {
     pub chemical_entity_name: String,
@@ -12,6 +13,7 @@ pub struct InputRecord {
     pub reference_doi: String,
 }
 
+/// Defines which CSV columns map to the required fields.
 #[derive(Debug, Clone)]
 pub struct ColumnConfig {
     pub chemical_name: String,
@@ -21,6 +23,7 @@ pub struct ColumnConfig {
 }
 
 impl ColumnConfig {
+    /// Returns the default column mapping expected by lotus-o3.
     pub fn default() -> Self {
         Self {
             chemical_name: "chemical_entity_name".to_string(),
@@ -48,6 +51,7 @@ enum ColumnRole {
     Doi,
 }
 
+/// Metadata about each required CSV column for error reporting.
 struct ColumnRequirement {
     role: ColumnRole,
     default_header: &'static str,
@@ -82,6 +86,7 @@ const COLUMN_REQUIREMENTS: [ColumnRequirement; 4] = [
     },
 ];
 
+/// Normalizes verbose taxon labels (e.g., truncating authorship info).
 fn normalize_taxon_name(taxon_name: &str) -> String {
     taxon_name
         .split_whitespace()
@@ -90,7 +95,7 @@ fn normalize_taxon_name(taxon_name: &str) -> String {
         .join(" ")
 }
 
-// Loads and validates the input CSV file.
+/// Loads and validates the input CSV file, applying the provided column mapping.
 pub fn load_and_validate_csv(file_path: &Path, columns: &ColumnConfig) -> Result<Vec<InputRecord>> {
     let mut reader = csv::Reader::from_path(file_path)?;
     let headers = reader.headers()?.clone();

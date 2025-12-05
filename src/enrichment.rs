@@ -1,12 +1,12 @@
+//! Chemoinformatics enrichment utilities.
 use crate::csv_handler::InputRecord;
 use crate::error::{CrateError, Result};
-use log::info;
-use log::warn;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-// Holds the input data plus data fetched from the Chemoinformatics API.
+/// Holds the input data plus descriptors fetched from external services.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EnrichedData {
     pub chemical_entity_name: String,
@@ -223,6 +223,7 @@ async fn fetch_descriptors(
 // Helper to fetch error details from /chem/errors
 
 // Enriches a single InputRecord with data from the API using specific endpoints
+/// Calls the sanitization and descriptor APIs to enrich a CSV row.
 pub async fn enrich_record(record: InputRecord, client: &reqwest::Client) -> Result<EnrichedData> {
     let smiles = &record.chemical_entity_smiles;
 

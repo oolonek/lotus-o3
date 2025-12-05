@@ -1,3 +1,4 @@
+//! lotus-o3 CLI entry point orchestrating CSV parsing and Wikidata preparation.
 pub mod cli;
 pub mod csv_handler;
 pub mod enrichment;
@@ -22,6 +23,7 @@ use urlencoding::encode;
 use wikidata::checker::{WikidataInfo, check_wikidata};
 use wikidata::writer::generate_quickstatements;
 
+/// Parses CLI args, loads the CSV, and drives enrichment plus QS generation.
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logger

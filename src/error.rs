@@ -1,5 +1,7 @@
+//! Common error types used throughout the crate.
 use thiserror::Error;
 
+/// Unified error enum for lotus-o3.
 #[derive(Error, Debug)]
 pub enum CrateError {
     #[error("CSV processing error: {0}")]

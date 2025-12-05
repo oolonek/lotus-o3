@@ -1,6 +1,8 @@
+//! Command-line interface definitions for lotus-o3.
 use clap::Parser;
 use std::path::PathBuf;
 
+/// CLI arguments accepted by lotus-o3.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -55,6 +57,7 @@ pub struct Cli {
     // TODO: Add options for direct push credentials (if implemented)
 }
 
+/// Supported output modes.
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum OutputMode {
     /// Generate a QuickStatements V1 file.

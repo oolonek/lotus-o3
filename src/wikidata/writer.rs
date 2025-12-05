@@ -1,3 +1,4 @@
+//! QuickStatements (QS) generation helpers.
 use crate::enrichment::EnrichedData;
 use crate::error::{CrateError, Result};
 use crate::reference::{CROSSREF_QID, ReferenceMetadata, format_retrieved_date};
@@ -6,7 +7,7 @@ use log::warn;
 use std::collections::HashSet;
 use std::io::Write;
 
-// Generates a QuickStatements V1 command string for a list of records.
+/// Generates QuickStatements commands for the provided records.
 pub fn generate_quickstatements(
     records: &[(EnrichedData, WikidataInfo)],
     writer: &mut dyn Write,
@@ -290,6 +291,7 @@ mod tests {
     }
 }
 
+/// Creates QS commands to build a reference item from Crossref metadata.
 fn build_reference_commands(metadata: &ReferenceMetadata) -> Vec<String> {
     let mut commands = Vec::new();
     let retrieved_date = format_retrieved_date(metadata.retrieved_on);

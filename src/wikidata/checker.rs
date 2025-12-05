@@ -1,3 +1,4 @@
+//! SPARQL helpers that check Wikidata for chemicals, taxa, references, and occurrences.
 use crate::enrichment::EnrichedData;
 use crate::error::{CrateError, Result};
 use crate::reference::{ReferenceMetadata, fetch_reference_metadata};
@@ -7,7 +8,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-// Stores results from Wikidata checks.
+/// Stores results from Wikidata checks for a single row.
 #[derive(Debug, Clone, Default)]
 pub struct WikidataInfo {
     pub chemical_qid: Option<String>,
@@ -262,7 +263,7 @@ async fn check_occurrence(
     })
 }
 
-// Main function to check entities and occurrence for a given enriched record
+/// Resolves existing Wikidata entities and detects missing references for an enriched record.
 pub async fn check_wikidata(
     record: &EnrichedData,
     client: &reqwest::Client,
