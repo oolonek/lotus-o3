@@ -1,6 +1,11 @@
 # LOTUS-O3 (LOTUS Oxyde)
 
 This Rust crate provides a command-line tool to process CSV files containing chemical occurrence data (chemical name, SMILES, taxon name, reference DOI) and prepare it for addition to Wikidata.
+See the [LOTUS Project](https://www.wikidata.org/wiki/Wikidata:WikiProject_Chemistry_Natural_products) page and associated [paper](https://doi.org/10.7554/eLife.70780) for context. 
+
+
+![The LOTUS flow](https://upload.wikimedia.org/wikipedia/commons/f/f1/Lotus_initiative_1_graphical_abstract.svg)
+
 
 ## Features
 
